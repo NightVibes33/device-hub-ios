@@ -1,0 +1,87 @@
+name: Build unsigned iOS 27 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: device-hub-unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ipa:
+    name: Unsigned iOS 27 IPA (macOS 27 / Xcode 27)
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      CI: "1"
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      DEVICE_HUB_GUARD_HELD: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Show runner and Xcode versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          test "$(uname -m)" = arm64
+
+      - name: Install pinned build tools
+        uses: jdx/mise-action@v5
+        with:
+          cache: true
+          install: true
+
+      - name: Compile Rust protocol and generate Xcode project
+        run: mise run setup
+
+      - name: Build unsigned iOS 27 release application
+        run: |
+          xcodebuild build \
+            -project DeviceHub.xcodeproj \
+            -scheme DeviceHub \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DeviceHubDerivedData" \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVICE_HUB_BUNDLE_IDENTIFIER="com.nightvibes33.devicehub"
+
+      - name: Verify and package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DeviceHubDerivedData/Build/Products/Release-iphoneos/DeviceHub.app"
+          test -s "$APP/Info.plist"
+          test -f "$APP/DeviceHub"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          test "$BUNDLE_ID" = "com.nightvibes33.devicehub"
+          if /usr/bin/codesign -dv "$APP" >/dev/null 2>&1; then
+            echo "Expected an unsigned app, but a signing identity was detected."
+            exit 1
+          fi
+          mkdir -p dist/Payload
+          /usr/bin/ditto "$APP" dist/Payload/DeviceHub.app
+          (
+            cd dist
+            /usr/bin/zip -qry DeviceHub-iOS27-unsigned.ipa Payload
+            /usr/bin/unzip -tq DeviceHub-iOS27-unsigned.ipa
+          )
+          test -s dist/DeviceHub-iOS27-unsigned.ipa
+          echo "Unsigned IPA packaged: dist/DeviceHub-iOS27-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeviceHub-iOS27-unsigned
+          path: dist/DeviceHub-iOS27-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
