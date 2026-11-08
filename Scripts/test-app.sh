@@ -18,7 +18,7 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 EVIDENCE_ROOT="${DEVICE_HUB_TEST_EVIDENCE_DIR:-$DERIVED_DATA_PATH/TestEvidence/DeviceHub/$RUN_ID}"
 ACCESSIBILITY_JSON="$RUN_ROOT/accessibility.json"
 RECORD_SNAPSHOTS="${DEVICE_HUB_RECORD_SNAPSHOTS:-0}"
-XCBEAUTIFY_COMMAND="${XCBEAUTIFY_COMMAND:-xcbeautify}"
+RECORD_SNAPSHOT_TEST="${DEVICE_HUB_RECORD_SNAPSHOT_TEST:-}"
 
 # Invoked by the EXIT trap below.
 # shellcheck disable=SC2329
@@ -41,11 +41,6 @@ DESTINATION="generic/platform=iOS Simulator" \
 CODE_SIGNING_ALLOWED=YES \
 DERIVED_DATA_PATH="$DERIVED_DATA_PATH" \
   Scripts/build-app.sh
-
-if ! command -v "$XCBEAUTIFY_COMMAND" >/dev/null 2>&1; then
-  printf 'Required test formatter is unavailable: %s\n' "$XCBEAUTIFY_COMMAND" >&2
-  exit 127
-fi
 
 REPOSITORY_ROOT="$(cd "$ROOT" && pwd -P)"
 if [[ "$EVIDENCE_ROOT" != /* ]]; then
@@ -76,7 +71,6 @@ Sources/DeviceHubPrivateMedia/Tests/run-tests.sh
 DESTINATION="platform=iOS Simulator,id=$SIMULATOR_UDID" \
 DERIVED_DATA_PATH="$DERIVED_DATA_PATH" \
 DEVICE_HUB_TEST_EVIDENCE_DIR="$EVIDENCE_ROOT" \
-XCBEAUTIFY_COMMAND="$XCBEAUTIFY_COMMAND" \
   Scripts/test-live-ios.sh
 
 run_ui_snapshot_tests() {
@@ -85,6 +79,13 @@ run_ui_snapshot_tests() {
   local compilation_conditions
   local raw_log
   local result_bundle
+  local snapshot_tests=(
+    "-only-testing:DeviceHubUITests/DeviceHubVisualSnapshotTests"
+    "-only-testing:DeviceHubUITests/RemoteSessionFoldedControlsSnapshotTests"
+  )
+  if [[ "$record_mode" == "1" && -n "$RECORD_SNAPSHOT_TEST" ]]; then
+    snapshot_tests=("-only-testing:DeviceHubUITests/$RECORD_SNAPSHOT_TEST")
+  fi
   if [[ "$record_mode" == "1" ]]; then
     pass_name="record"
   fi
@@ -98,17 +99,17 @@ run_ui_snapshot_tests() {
   fi
   (
     cd "$ROOT/Packages/DeviceHubKit"
-    if devicehub_run_xcodebuild_test \
+    if devicehub_run_xcodebuild \
         "devicehub-ui-snapshot-$pass_name" \
         "$raw_log" \
         "$result_bundle" \
-        "$XCBEAUTIFY_COMMAND" \
+        1600 \
         /usr/bin/xcodebuild \
         test \
         -scheme DeviceHubKit-Package \
         -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
         -derivedDataPath "$DERIVED_DATA_PATH" \
-        -only-testing:DeviceHubUITests/DeviceHubVisualSnapshotTests \
+        "${snapshot_tests[@]}" \
         -parallel-testing-enabled NO \
         -collect-test-diagnostics never \
         -skipMacroValidation \

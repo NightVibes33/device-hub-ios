@@ -53,6 +53,7 @@ verify_slice() {
   /usr/bin/xcrun --sdk "$sdk" clang \
     -arch arm64 \
     "$minimum_flag$EXPECTED_MINIMUM" \
+    -Wl,-fatal_warnings \
     -Wall \
     -Wextra \
     -Werror \
@@ -106,4 +107,4 @@ verify_slice \
   -I "$SOURCE_HEADERS" \
   "$SMOKE_SOURCE"
 
-echo "Verified Device Hub XCFramework: arm64 iOS 27 + arm64 Simulator 27."
+echo "Verified Device Hub XCFramework: arm64 iOS 27.0 + arm64 Simulator 27.0."

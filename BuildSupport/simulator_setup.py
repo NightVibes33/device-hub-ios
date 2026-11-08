@@ -24,6 +24,7 @@ IDENTIFIER_PATTERN = re.compile(
 )
 TASK_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
 TASK_MARKER = " - Codex "
+MINIMUM_IOS_RUNTIME = (27, 0, 0)
 CommandRunner = Callable[[tuple[str, ...], bool], str]
 SimSlimConfiguration = tuple[str, Path]
 
@@ -51,6 +52,14 @@ class PreparedSimulator:
 
     identifier: str
     name: str
+
+
+@dataclass(frozen=True)
+class SimulatorRuntime:
+    """The selected iOS runtime and its compatible simulator device types."""
+
+    identifier: str
+    supported_device_type_identifiers: frozenset[str]
 
 
 def validate_identifier(value: object) -> str:
@@ -108,6 +117,36 @@ def json_command(
         raise SimulatorSetupError("simctl returned malformed JSON") from error
 
 
+def parse_version_components(value: str) -> tuple[int, int, int]:
+    """Parse an Xcode or Simulator version into comparable numeric fields."""
+
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", value) is None:
+        raise SimulatorSetupError("selected Xcode reported an invalid iOS version")
+    components = tuple(int(component) for component in value.split("."))
+    return (components + (0, 0, 0))[:3]
+
+
+def simulator_device_types(
+    run_command: CommandRunner,
+) -> tuple[dict[str, str], ...]:
+    """Return named iPhone/iPad simulator types from simctl metadata."""
+
+    payload = json_command(
+        run_command,
+        (XCRUN, "simctl", "list", "devicetypes", "--json"),
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("devicetypes"), list):
+        raise SimulatorSetupError("simctl device-type inventory is malformed")
+    return tuple(
+        {"name": device["name"], "identifier": device["identifier"]}
+        for device in payload["devicetypes"]
+        if isinstance(device, dict)
+        and isinstance(device.get("name"), str)
+        and device["name"].startswith(("iPhone ", "iPad "))
+        and isinstance(device.get("identifier"), str)
+    )
+
+
 def simulator_inventory(run_command: CommandRunner) -> tuple[SimulatorDevice, ...]:
     """Return available simulators using only exact identity fields."""
 
@@ -140,8 +179,54 @@ def simulator_inventory(run_command: CommandRunner) -> tuple[SimulatorDevice, ..
     return tuple(devices)
 
 
-def runtime_identifier(run_command: CommandRunner) -> str:
-    """Select the newest available iOS 27 runtime deterministically."""
+def select_runtime(
+    run_command: CommandRunner,
+    requested_version: str | None = None,
+    requested_device_type_name: str | None = None,
+) -> SimulatorRuntime:
+    """Select the newest installed runtime within the app floor and selected SDK."""
+
+    requested_components: tuple[int, ...] | None = None
+    if requested_version is not None:
+        try:
+            requested_components = parse_version_components(requested_version)
+        except SimulatorSetupError as error:
+            raise SimulatorSetupError(
+                "requested iOS simulator runtime version is invalid"
+            ) from error
+    sdk_version = run_command(
+        (XCRUN, "--sdk", "iphoneos", "--show-sdk-version"), True
+    ).strip()
+    try:
+        sdk_components = parse_version_components(sdk_version)
+    except SimulatorSetupError as error:
+        raise SimulatorSetupError(
+            "selected Xcode reported an invalid iPhoneOS SDK version"
+        ) from error
+    if requested_components is not None and requested_components > sdk_components:
+        raise SimulatorSetupError(
+            f"requested iOS simulator runtime {requested_version} is newer than "
+            f"selected iOS SDK {sdk_version}"
+        )
+
+    available_device_types = (
+        simulator_device_types(run_command) if requested_version is None else ()
+    )
+    requested_device_type_identifier: str | None = None
+    if requested_device_type_name is not None and requested_version is None:
+        requested_device_type_identifier = next(
+            (
+                device["identifier"]
+                for device in available_device_types
+                if device["name"] == requested_device_type_name
+            ),
+            None,
+        )
+        if requested_device_type_identifier is None:
+            raise SimulatorSetupError(
+                "no exact iPhone or iPad simulator device type named "
+                f"{requested_device_type_name!r}"
+            )
 
     payload = json_command(
         run_command,
@@ -149,45 +234,96 @@ def runtime_identifier(run_command: CommandRunner) -> str:
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("runtimes"), list):
         raise SimulatorSetupError("simctl runtime inventory is malformed")
-    candidates = tuple(
-        runtime["identifier"]
-        for runtime in payload["runtimes"]
-        if isinstance(runtime, dict)
-        and runtime.get("isAvailable") is True
-        and isinstance(runtime.get("identifier"), str)
-        and runtime["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-27-")
-    )
+    candidates: list[tuple[tuple[int, ...], str]] = []
+    prefix = "com.apple.CoreSimulator.SimRuntime.iOS-"
+    for runtime in payload["runtimes"]:
+        if (
+            not isinstance(runtime, dict)
+            or runtime.get("isAvailable") is not True
+            or not isinstance(runtime.get("identifier"), str)
+        ):
+            continue
+        identifier = runtime["identifier"]
+        if not identifier.startswith(prefix):
+            continue
+        version_components = identifier.removeprefix(prefix).split("-")
+        if not all(component.isdecimal() for component in version_components):
+            continue
+        numeric_components = tuple(int(component) for component in version_components)
+        version = (numeric_components + (0, 0, 0))[:3]
+        supported_types = runtime.get("supportedDeviceTypes")
+        if isinstance(supported_types, list):
+            supported_identifiers = {
+                device_type.get("identifier")
+                for device_type in supported_types
+                if isinstance(device_type, dict)
+            }
+        else:
+            supported_identifiers = set()
+        if (
+            version >= MINIMUM_IOS_RUNTIME
+            and version <= sdk_components
+            and (requested_components is None or version == requested_components)
+            and (
+                requested_device_type_identifier is None
+                or requested_device_type_identifier in supported_identifiers
+            )
+            and (
+                requested_version is not None
+                or requested_device_type_name is not None
+                or any(
+                    device["name"].startswith("iPhone ")
+                    and device["identifier"] in supported_identifiers
+                    for device in available_device_types
+                )
+            )
+        ):
+            candidates.append((version, identifier))
     if not candidates:
-        raise SimulatorSetupError("no available iOS 27 simulator runtime")
-    return max(
-        candidates,
-        key=lambda identifier: tuple(
-            int(component)
-            for component in identifier.rsplit("iOS-", maxsplit=1)[-1].split("-")
-        ),
+        if requested_version is not None:
+            raise SimulatorSetupError(
+                f"no available iOS {requested_version} simulator runtime within "
+                f"selected iOS SDK {sdk_version}"
+            )
+        if requested_device_type_name is not None:
+            raise SimulatorSetupError(
+                "no available iOS simulator runtime between 27.0 and selected "
+                f"iOS SDK {sdk_version} supports device type {requested_device_type_name!r}"
+            )
+        raise SimulatorSetupError(
+            "no available iOS simulator runtime between 27.0 and selected "
+            f"iOS SDK {sdk_version} supports an iPhone device type"
+        )
+    selected_identifier = max(candidates, key=lambda candidate: candidate[0])[1]
+    selected_runtime = next(
+        runtime
+        for runtime in payload["runtimes"]
+        if isinstance(runtime, dict) and runtime.get("identifier") == selected_identifier
+    )
+    raw_device_types = selected_runtime.get("supportedDeviceTypes")
+    if not isinstance(raw_device_types, list):
+        raise SimulatorSetupError("selected iOS runtime has no supported simulator device types")
+    supported_device_type_identifiers = frozenset(
+        device_type["identifier"]
+        for device_type in raw_device_types
+        if isinstance(device_type, dict) and isinstance(device_type.get("identifier"), str)
+    )
+    if not supported_device_type_identifiers:
+        raise SimulatorSetupError("selected iOS runtime has no supported simulator device types")
+    return SimulatorRuntime(
+        identifier=selected_identifier,
+        supported_device_type_identifiers=supported_device_type_identifiers,
     )
 
 
 def device_type_identifier(
     run_command: CommandRunner,
+    supported_device_type_identifiers: frozenset[str],
     requested_name: str | None = None,
 ) -> str:
-    """Select an exact requested model or the preferred iPhone model."""
+    """Select an exact compatible model or the preferred compatible iPhone."""
 
-    payload = json_command(
-        run_command,
-        (XCRUN, "simctl", "list", "devicetypes", "--json"),
-    )
-    if not isinstance(payload, dict) or not isinstance(payload.get("devicetypes"), list):
-        raise SimulatorSetupError("simctl device-type inventory is malformed")
-    candidates = tuple(
-        device
-        for device in payload["devicetypes"]
-        if isinstance(device, dict)
-        and isinstance(device.get("name"), str)
-        and device["name"].startswith(("iPhone ", "iPad "))
-        and isinstance(device.get("identifier"), str)
-    )
+    candidates = simulator_device_types(run_command)
     if requested_name is not None:
         selected = next(
             (device for device in candidates if device["name"] == requested_name),
@@ -197,17 +333,30 @@ def device_type_identifier(
             raise SimulatorSetupError(
                 f"no exact iPhone or iPad simulator device type named {requested_name!r}"
             )
+        if selected["identifier"] not in supported_device_type_identifiers:
+            raise SimulatorSetupError(
+                f"simulator device type {requested_name!r} is not supported by the selected iOS runtime"
+            )
     else:
+        compatible = tuple(
+            device
+            for device in candidates
+            if device["identifier"] in supported_device_type_identifiers
+        )
         preferred = next(
-            (device for device in candidates if device["name"] == "iPhone 17 Pro"),
+            (device for device in compatible if device["name"] == "iPhone Duo"),
             None,
         )
-        selected = preferred or next(
-            (device for device in candidates if device["name"].startswith("iPhone ")),
+        standard = next(
+            (device for device in compatible if device["name"] == "iPhone 17 Pro"),
+            None,
+        )
+        selected = preferred or standard or next(
+            (device for device in compatible if device["name"].startswith("iPhone ")),
             None,
         )
     if selected is None:
-        raise SimulatorSetupError("no iPhone simulator device type")
+        raise SimulatorSetupError("no iPhone simulator device type supported by the selected iOS runtime")
     return selected["identifier"]
 
 
@@ -244,10 +393,16 @@ def create_task_simulator(
     task_name: str,
     run_command: CommandRunner,
     device_type_name: str | None = None,
+    runtime_version: str | None = None,
 ) -> PreparedSimulator:
     """Create and verify one fresh simulator rather than borrowing a device."""
 
     name = task_simulator_name(task_name)
+    runtime = select_runtime(
+        run_command,
+        requested_version=runtime_version,
+        requested_device_type_name=device_type_name,
+    )
     identifier = validate_identifier(
         run_command(
             (
@@ -255,8 +410,12 @@ def create_task_simulator(
                 "simctl",
                 "create",
                 name,
-                device_type_identifier(run_command, device_type_name),
-                runtime_identifier(run_command),
+                device_type_identifier(
+                    run_command,
+                    runtime.supported_device_type_identifiers,
+                    device_type_name,
+                ),
+                runtime.identifier,
             ),
             True,
         ).strip()
@@ -379,6 +538,7 @@ def prepare_task_simulator(
     task_name: str,
     run_command: CommandRunner = subprocess_command,
     device_type_name: str | None = None,
+    runtime_version: str | None = None,
 ) -> PreparedSimulator:
     """Create and boot one exact task-owned simulator after build preflight."""
 
@@ -387,6 +547,7 @@ def prepare_task_simulator(
         task_name=task_name,
         run_command=run_command,
         device_type_name=device_type_name,
+        runtime_version=runtime_version,
     )
     try:
         if configuration is not None:
@@ -485,6 +646,7 @@ def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:
     prepare = subparsers.add_parser("prepare")
     prepare.add_argument("--name", required=True)
     prepare.add_argument("--device-type")
+    prepare.add_argument("--runtime-version")
     validate = subparsers.add_parser("validate-task")
     validate.add_argument("--udid", required=True)
     validate.add_argument("--name", required=True)
@@ -503,6 +665,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             prepared = prepare_task_simulator(
                 task_name=namespace.name,
                 device_type_name=namespace.device_type,
+                runtime_version=namespace.runtime_version,
             )
             print(f"{prepared.identifier}\t1\t{prepared.name}")
         elif namespace.operation == "validate-task":

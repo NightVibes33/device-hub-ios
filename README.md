@@ -2,7 +2,7 @@
 
 ![Device Hub iOS running on iPad and controlling an iPhone](Docs/Images/device-hub-ipad.png)
 
-![iOS and iPadOS 27+](https://img.shields.io/badge/iOS%20%26%20iPadOS-27%2B-000000?logo=apple&logoColor=white)
+![iOS and iPadOS 27.0+](https://img.shields.io/badge/iOS%20%26%20iPadOS-27.0%2B-000000?logo=apple&logoColor=white)
 ![Swift 6.4](https://img.shields.io/badge/Swift-6.4-F05138?logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 
@@ -27,14 +27,25 @@ uses private, undocumented Apple interfaces.
 
 ## Requirements
 
-- macOS with Xcode 27 and the iOS 27 SDK
-- An iPhone or iPad running iOS or iPadOS 27
+- macOS with Xcode 27.1 or later and the iOS 27.1 SDK or later
+- An iPhone or iPad running iOS or iPadOS 27.0 or later
 - A compatible target device with Developer Mode enabled
 - An Apple development signing identity for device installation
 - Local-network connectivity between the controller and target
 
-Device Hub iOS is currently verified against the Beta 3 train of iOS 27 and
-iPadOS 27. Later seeds may require protocol updates.
+Device Hub targets iOS and iPadOS 27.0. The build still requires Xcode 27.1
+and its iOS 27.1 SDK; simulator checks can select the 27.0 stable runtime or
+the 27.1 iPhone Duo runtime. Protocol compatibility remains separate from the
+app's deployment target.
+
+Build, test, archive, and release entry points check the selected Xcode and
+installed iPhoneOS SDK with the shared `ios-build-support` toolchain checker
+before compiling. Set `DEVELOPER_DIR` to the Xcode 27.1 installation when that
+is not the machine's selected Xcode.
+
+The Swift lint task loads the shared adaptive-layout rule from
+`~/code/ios-build-support`. Set `SHARED_IOS_SUPPORT_DIR` when that checkout is
+located elsewhere.
 
 ## Getting started
 
@@ -84,19 +95,25 @@ Scripts/release.sh --release-notes-file /absolute/path/release-notes.md
 
 The command builds one artifact, records its source revision, and sends it to
 `POST https://api.builds.lan/v1/builds/ios` through the canonical uploader at
-`/Volumes/RunnerCache/code/builds-native/Scripts/upload-builds-lan-api.py`.
+`Scripts/upload-builds-lan-api.py` under `BUILDS_NATIVE_DIR` (default:
+`~/code/builds-native`). On JaviMini, set `BUILDS_NATIVE_DIR` to the existing
+`/Volumes/RunnerCache/code/builds-native` checkout.
 It does not install the app on a device or use a second catalog or publication
 route. Release notes are required and must contain only the user-visible
 changes since the previous Device Hub build.
 
 By default, signing reads the existing App Store Connect fields (`issuer_id`,
 `key_id`, and `key`) through `codex-secret`'s private file descriptor, and the
-publisher reads the existing Builds upload `token` the same way. Neither needs
-a local token file. Explicit mode-0600 file overrides are available through
-`APPLE_API_KEY_JSON` and `BUILDS_LAN_UPLOAD_TOKEN_FILE`. Builds use the
-currently selected Xcode and the native DerivedData path, which must resolve to
-`/Volumes/RunnerCache/DerivedData/javi`; archive logs and the `.xcresult` are
-saved outside the repository under `DeviceHubRelease/<timestamp>` there.
+publisher reads the existing Builds upload `token` the same way. The normal
+release path requires this private-descriptor route and does not put secrets in
+arguments or environment variables. Explicit mode-0600 file overrides remain
+available through `APPLE_API_KEY_JSON` and `BUILDS_LAN_UPLOAD_TOKEN_FILE`.
+Builds use the
+currently selected Xcode and the native DerivedData path at
+`~/Library/Developer/Xcode/DerivedData/DeviceHub`; archive logs and the
+`.xcresult` are saved outside the repository under
+`DeviceHubRelease/<timestamp>`. An explicitly configured RunnerCache path is
+also accepted when that volume is mounted.
 
 The publisher verifies HTTPS with the existing LAN CA bundled in BuildsKit.
 Set `BUILDS_LAN_CA_FILE` only to select another trusted local CA certificate.

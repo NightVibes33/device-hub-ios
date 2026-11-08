@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -28,6 +29,121 @@ def target_block(name: str) -> str:
 
 
 class ProjectLinkageTests(unittest.TestCase):
+    def test_ios_runtime_version_guard_checks_numeric_versions(self) -> None:
+        helper = REPOSITORY_ROOT / "BuildSupport/check_xcode_toolchain.sh"
+        for version, expected in (
+            ("26.9", False),
+            ("27.0", True),
+            ("27.1", True),
+            ("27.2", True),
+            ("28.0", True),
+            ("27", False),
+            ("27.invalid", False),
+        ):
+            with self.subTest(version=version):
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        'source "$1"; is_ios_270_or_later "$2"',
+                        "bash",
+                        str(helper),
+                        version,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode == 0, expected, result.stderr)
+
+    def test_ios_deployment_floor_is_270_and_sdk_stays_271(self) -> None:
+        project = PROJECT_SPECIFICATION.read_text(encoding="utf-8")
+        package = (REPOSITORY_ROOT / "Packages/DeviceHubKit/Package.swift").read_text(
+            encoding="utf-8"
+        )
+        build_xcframework = (REPOSITORY_ROOT / "Scripts/build-protocol-xcframework.sh").read_text(
+            encoding="utf-8"
+        )
+        verify_xcframework = (REPOSITORY_ROOT / "Scripts/verify-protocol-xcframework.sh").read_text(
+            encoding="utf-8"
+        )
+        private_media_tests = (REPOSITORY_ROOT / "Sources/DeviceHubPrivateMedia/Tests/run-tests.sh").read_text(
+            encoding="utf-8"
+        )
+        probe_info = (REPOSITORY_ROOT / "Sources/DeviceHubPrivateMedia/Probe/Info.plist").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertTrue('iOS: "27.0"' in project, "XcodeGen must set iOS to 27.0")
+        self.assertTrue(
+            'xcodeVersion: "27.1"' in project,
+            "XcodeGen metadata must require the Xcode 27.1 toolchain",
+        )
+        self.assertTrue(
+            'IPHONEOS_DEPLOYMENT_TARGET: "27.0"' in project,
+            "the app build setting must set iOS to 27.0",
+        )
+        self.assertTrue(
+            '.iOS("27.0")' in package,
+            "SwiftPM must set the iOS platform to 27.0",
+        )
+        self.assertTrue(
+            'readonly DEPLOYMENT_TARGET="27.0"' in build_xcframework,
+            "the Rust XCFramework slices must target iOS 27.0",
+        )
+        self.assertIn(
+            'readonly BUILD_ROOT="${DEVICE_HUB_PROTOCOL_TARGET_DIR:-$DERIVED_DATA_PATH/Rust/.build/cargo-ios-$DEPLOYMENT_TARGET}"',
+            build_xcframework,
+            "Rust objects must use the task's external compiler cache and not reuse a different deployment floor",
+        )
+        self.assertIn(
+            "devicehub_check_xcode_toolchain",
+            build_xcframework,
+            "the Rust XCFramework build must use the shared Xcode and SDK check",
+        )
+        toolchain_check = (REPOSITORY_ROOT / "BuildSupport/check_xcode_toolchain.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "--minimum-xcode 27.1 --minimum-ios-sdk 27.1",
+            toolchain_check,
+            "build tools must keep requiring the Xcode 27.1 toolchain and SDK",
+        )
+        for build_entry in (
+            "Scripts/build-app.sh",
+            "Scripts/archive-app.sh",
+            "Scripts/build-device-ipa.sh",
+            "Scripts/test-live-ios.sh",
+            "Sources/DeviceHubPrivateMedia/Tests/run-tests.sh",
+        ):
+            contents = (REPOSITORY_ROOT / build_entry).read_text(encoding="utf-8")
+            self.assertIn(
+                "devicehub_check_xcode_toolchain",
+                contents,
+                f"{build_entry} must enforce the shared Xcode and SDK floor",
+            )
+        self.assertTrue(
+            'readonly EXPECTED_MINIMUM="27.0"' in verify_xcframework,
+            "the XCFramework verifier must require iOS 27.0",
+        )
+        self.assertIn(
+            "-Wl,-fatal_warnings",
+            verify_xcframework,
+            "the XCFramework verifier must reject object files built for a newer OS",
+        )
+        self.assertTrue(
+            "-target arm64-apple-ios27.0" in private_media_tests,
+            "the device probe must target iOS 27.0",
+        )
+        self.assertTrue(
+            "-target \"$simulator_arch-apple-ios27.0-simulator\"" in private_media_tests,
+            "the simulator probe must target iOS 27.0",
+        )
+        self.assertTrue(
+            "<string>27.0</string>" in probe_info,
+            "the probe bundle must declare iOS 27.0 as its minimum",
+        )
+
     def test_app_bundles_the_third_party_notices(self) -> None:
         notices = REPOSITORY_ROOT / "THIRD_PARTY_NOTICES.md"
         app_target = target_block("DeviceHub")
@@ -35,6 +151,27 @@ class ProjectLinkageTests(unittest.TestCase):
         self.assertTrue(notices.is_file())
         self.assertIn(
             "- path: THIRD_PARTY_NOTICES.md\n        buildPhase: resources",
+            app_target,
+        )
+
+    def test_app_build_keeps_bounded_logs_and_allows_the_personal_bundle_id(self) -> None:
+        build = (REPOSITORY_ROOT / "Scripts/build-app.sh").read_text(
+            encoding="utf-8"
+        )
+        app_target = target_block("DeviceHub")
+
+        self.assertIn("run_logged.py", build)
+        self.assertIn('-resultBundlePath "$BUILD_RESULT_BUNDLE"', build)
+        self.assertIn(
+            'DEVICE_HUB_BUNDLE_IDENTIFIER="${DEVICE_HUB_BUNDLE_IDENTIFIER:-es.javisoto.DeviceHub}"',
+            build,
+        )
+        self.assertIn(
+            'XCODEBUILD_ARGS+=("DEVICE_HUB_BUNDLE_IDENTIFIER=$DEVICE_HUB_BUNDLE_IDENTIFIER")',
+            build,
+        )
+        self.assertIn(
+            "DEVICE_HUB_BUNDLE_IDENTIFIER: es.javisoto.DeviceHub",
             app_target,
         )
 
@@ -114,13 +251,13 @@ class ProjectLinkageTests(unittest.TestCase):
         )
         for final_dependency in (
             "framework: Rust/Artifacts/DeviceHubFFI.xcframework",
-            "target: DeviceHubPrivateMedia",
+            "target: DeviceHubPrivateMedia\n        embed: false",
         ):
             self.assertIn(
                 final_dependency,
                 app_target,
-                "the app must link each native dependency used by the static "
-                "composition library",
+                "the app must link but not embed each native dependency used by "
+                "the static composition library",
             )
 
         tests_target = target_block("DeviceHubLiveTests")

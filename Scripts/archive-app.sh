@@ -5,12 +5,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROCESS_GUARD="$ROOT/BuildSupport/process_guard.sh"
 # shellcheck source=BuildSupport/process_guard.sh
 source "$PROCESS_GUARD"
+# shellcheck source=BuildSupport/check_xcode_toolchain.sh
+source "$ROOT/BuildSupport/check_xcode_toolchain.sh"
 # shellcheck source=BuildSupport/signing_keychain.sh
 source "$ROOT/BuildSupport/signing_keychain.sh"
 devicehub_require_guard archive-app 1800 "$0" "$@"
 
 ARCHIVE_PATH="${ARCHIVE_PATH:-$ROOT/build/DeviceHub.xcarchive}"
-DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$ROOT/DerivedData}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$HOME/Library/Developer/Xcode/DerivedData/DeviceHub}"
 CODE_SIGNING_ALLOWED="${CODE_SIGNING_ALLOWED:-YES}"
 SIGNING_KEYCHAIN_PATH="${SIGNING_KEYCHAIN_PATH:-$HOME/Library/Keychains/login.keychain-db}"
 ALLOW_PROVISIONING_UPDATES="${ALLOW_PROVISIONING_UPDATES:-0}"
@@ -22,6 +24,7 @@ if [[ ! -d "$DEVELOPER_DIR" ]]; then
   exit 1
 fi
 export DEVELOPER_DIR
+devicehub_check_xcode_toolchain
 
 XCODEBUILD_ARGS=(
   -quiet
