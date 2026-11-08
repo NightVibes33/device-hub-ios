@@ -23,9 +23,22 @@ jobs:
       CARGO_BUILD_JOBS: "2"
       CARGO_INCREMENTAL: "0"
       DEVICE_HUB_GUARD_HELD: "0"
+      # The build scripts call a logger from the author's private
+      # ios-build-support checkout; CI uses the stand-in in .github/ci-support.
+      SHARED_IOS_SUPPORT_DIR: ${{ github.workspace }}/.github/ci-support
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Select the newest Xcode 27 (the protocol build needs 27.1+)
+        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode_27*.app
+          # Prefer the newest release build; fall back to a beta only if no release exists
+          NEWEST="$(ls -d /Applications/Xcode_27.*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1 || true)"
+          [ -n "$NEWEST" ] || NEWEST="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
+          echo "Using $NEWEST"
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
 
       - name: Show runner and Xcode versions
         run: |

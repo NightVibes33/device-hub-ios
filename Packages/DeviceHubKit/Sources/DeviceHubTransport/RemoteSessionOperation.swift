@@ -497,8 +497,7 @@ func nativeFailureDiagnosticStage(
     _ failure: NativeSessionFailure
 ) -> DiagnosticStage {
     switch failure.stage {
-    case "bonjour_authentication",
-         "pair_verify",
+    case "pair_verify",
          "pair_verify_m2_authentication",
          "pair_verify_m2_decryption",
          "pair_verify_m2_identifier",
@@ -510,8 +509,7 @@ func nativeFailureDiagnosticStage(
          "pair_verify_timeout",
          "pair_verify_transport":
         .verifyingPairing
-    case "cd_tunnel",
-         "tls_psk_tunnel",
+    case "tls_psk_tunnel",
          "tunnel_listener":
         .openingTunnel
     case "rsd_handshake":

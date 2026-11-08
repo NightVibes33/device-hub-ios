@@ -72,6 +72,47 @@ extension DeviceHubClientLiveTests {
         }
     }
 
+    @Test("early native failures retain their connection stage")
+    func nativeConnectionFailurePhases() {
+        let mappings: [(String, DiagnosticStage)] = [
+            ("pair_verify", .verifyingPairing),
+            ("pair_verify_m2_authentication", .verifyingPairing),
+            ("pair_verify_m2_decryption", .verifyingPairing),
+            ("pair_verify_m2_identifier", .verifyingPairing),
+            ("pair_verify_m2_shape", .verifyingPairing),
+            ("pair_verify_m2_signature", .verifyingPairing),
+            ("pair_verify_m4_completion", .verifyingPairing),
+            ("pair_verify_peer_rejection", .verifyingPairing),
+            ("pair_verify_protocol", .verifyingPairing),
+            ("pair_verify_timeout", .verifyingPairing),
+            ("pair_verify_transport", .verifyingPairing),
+            ("tls_psk_tunnel", .openingTunnel),
+            ("tunnel_listener", .openingTunnel),
+            ("rsd_handshake", .discoveringServices),
+            ("developer_readiness", .verifyingDeveloperServices),
+            ("screenshot", .capturingScreenshot),
+            ("display_stream", .startingDisplay),
+            ("video_control", .startingDisplay),
+            ("input", .openingInputChannel),
+            ("hardware_button_input", .openingInputChannel),
+            ("keyboard_input", .openingInputChannel),
+            ("touch_input", .openingInputChannel),
+            ("session_lifecycle", .ready)
+        ]
+
+        for (stage, expected) in mappings {
+            #expect(
+                nativeFailureDiagnosticStage(
+                    NativeSessionFailure(
+                        code: "developer_image_connection_failed",
+                        stage: stage,
+                        retryable: true
+                    )
+                ) == expected
+            )
+        }
+    }
+
     @Test("decoder failures retain a useful redacted wire phase")
     func decoderFailurePhases() {
         #expect(
