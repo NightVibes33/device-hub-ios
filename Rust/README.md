@@ -32,7 +32,7 @@ sets exactly these bits:
 | 5 | `DH_CAPABILITY_AUTHENTICATED_RECONNECT` | Rust verifies Bonjour `authTag` and Pair Verify against the stored peer; there is no automatic pairing fallback. |
 | 6 | `DH_CAPABILITY_RSD_METADATA` | TLS-PSK, CDTunnel, and the userspace TCP stack establish authenticated Remote Service Discovery and return its canonical identity plus validated OS/build metadata when the device supplies it. |
 | 7 | `DH_CAPABILITY_PNG_SCREENSHOT` | CoreDevice screenshot service returns one bounded PNG whose chunks, CRCs, dimensions, IDAT, and terminator are validated before callback delivery. |
-| 8 | `DH_CAPABILITY_DEVELOPER_READINESS` | Remote operations fail closed unless Developer Mode and a developer image (an Xcode-prepared personalized image, or the DDI cryptex installed by Xcode or StikDebug on iOS 26.4+) are already available. |
+| 8 | `DH_CAPABILITY_DEVELOPER_READINESS` | Remote operations fail closed unless Developer Mode is enabled. When the target has no developer image, the session downloads the DDI cryptex from a pinned `doronz88/DeveloperDiskImage` commit, accepts it only if every file matches its reviewed SHA-256, has Apple personalize it over TSS, installs it through cryptexd, and rediscovers services. |
 | 9 | `DH_CAPABILITY_CONTROL_STREAM` | One authenticated display/control session remains live until cancellation. |
 | 10 | `DH_CAPABILITY_VIDEO_NEGOTIATION` | Swift's one retained AVConference receiver owns the exact mode-5 offer/answer acknowledgement. |
 | 11 | `DH_CAPABILITY_RAW_VIDEO_DATAGRAMS` | Each inbound video UDP datagram is delivered exactly once and in receive order. |

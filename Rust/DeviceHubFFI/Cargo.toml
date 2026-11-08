@@ -18,8 +18,9 @@ idevice = { path = "../../Vendor/idevice/idevice", default-features = false, fea
 plist = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 socket2 = "0.6"
-tokio = { version = "1.53", features = ["io-util", "net", "rt", "sync", "time"] }
+tokio = { version = "1.53", features = ["fs", "io-util", "net", "rt", "sync", "time"] }
 uuid = "1.24"
 zeroize = { version = "1.8", features = ["derive"] }
 

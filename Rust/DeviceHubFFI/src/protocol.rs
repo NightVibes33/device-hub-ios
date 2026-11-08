@@ -47,6 +47,7 @@ use crate::{
     },
 };
 
+mod ddi;
 mod input;
 mod support;
 mod video;
@@ -378,28 +379,7 @@ async fn run_remote(
         DhConnectionPhase::DiscoveringServices,
         DhSessionState::Connected,
     )?;
-    let rsd_stream = stage(
-        RSD_TIMEOUT,
-        PublicFailure::new(
-            "rsd_connect_failed",
-            "rsd_handshake",
-            true,
-            "Unable to connect through the userspace tunnel to RSD.",
-        ),
-        adapter.connect(rsd_port),
-    )
-    .await?;
-    let mut handshake = stage(
-        RSD_TIMEOUT,
-        PublicFailure::new(
-            "rsd_handshake_failed",
-            "rsd_handshake",
-            true,
-            "The Remote Service Discovery handshake failed.",
-        ),
-        RsdHandshake::new(rsd_stream),
-    )
-    .await?;
+    let mut handshake = rsd_handshake(&mut adapter, rsd_port).await?;
     let snapshot = rsd_snapshot(&handshake, &operation.target)?;
     emitter.rsd_ready(snapshot)?;
 
@@ -407,7 +387,17 @@ async fn run_remote(
         DhConnectionPhase::PreparingDevice,
         DhSessionState::Connected,
     )?;
-    let readiness = verify_developer_readiness(&mut adapter, &mut handshake).await?;
+    let readiness = match verify_developer_readiness(&mut adapter, &mut handshake).await {
+        Ok(readiness) => readiness,
+        Err(failure) if failure.code == "developer_image_unavailable" => {
+            // No developer image yet: install it, then rediscover services,
+            // because the image's services only appear in a fresh handshake.
+            ddi::install_developer_image(&mut adapter, &mut handshake).await?;
+            handshake = rsd_handshake(&mut adapter, rsd_port).await?;
+            verify_developer_readiness(&mut adapter, &mut handshake).await?
+        }
+        Err(failure) => return Err(failure),
+    };
 
     match operation.mode {
         RemoteMode::Screenshot => {
@@ -519,6 +509,35 @@ fn build_userspace_video_offer(
         return Err(media_start_failure());
     }
     build_screen_video_offer(call_id, call_info, our_ssrc).map_err(|_| media_start_failure())
+}
+
+/// Opens RSD through the tunnel and performs the service-discovery handshake.
+async fn rsd_handshake(
+    adapter: &mut tcp::handle::AdapterHandle,
+    rsd_port: u16,
+) -> Result<RsdHandshake, PublicFailure> {
+    let rsd_stream = stage(
+        RSD_TIMEOUT,
+        PublicFailure::new(
+            "rsd_connect_failed",
+            "rsd_handshake",
+            true,
+            "Unable to connect through the userspace tunnel to RSD.",
+        ),
+        adapter.connect(rsd_port),
+    )
+    .await?;
+    stage(
+        RSD_TIMEOUT,
+        PublicFailure::new(
+            "rsd_handshake_failed",
+            "rsd_handshake",
+            true,
+            "The Remote Service Discovery handshake failed.",
+        ),
+        RsdHandshake::new(rsd_stream),
+    )
+    .await
 }
 
 #[cfg(test)]
