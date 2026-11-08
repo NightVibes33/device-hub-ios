@@ -76,14 +76,14 @@ run_logged test-idevice 1740 "${CARGO[@]}" test \
   --manifest-path "$IDEVICE_MANIFEST" \
   --package idevice \
   --no-default-features \
-  --features ring,remote_pairing,tunnel_tcp_stack,display_stream,mobile_image_mounter \
+  --features ring,remote_pairing,tunnel_tcp_stack,display_stream,mobile_image_mounter,cryptexd \
   --lib \
   --locked
 run_logged clippy-idevice 1740 "${CARGO[@]}" clippy \
   --manifest-path "$IDEVICE_MANIFEST" \
   --package idevice \
   --no-default-features \
-  --features ring,remote_pairing,tunnel_tcp_stack,display_stream,mobile_image_mounter \
+  --features ring,remote_pairing,tunnel_tcp_stack,display_stream,mobile_image_mounter,cryptexd \
   --lib \
   --tests \
   --locked \
@@ -112,7 +112,7 @@ feature_tree="$("${CARGO[@]}" tree \
   --locked \
   --edges features \
   --invert idevice)"
-for feature in ring remote_pairing tunnel_tcp_stack display_stream mobile_image_mounter; do
+for feature in ring remote_pairing tunnel_tcp_stack display_stream mobile_image_mounter cryptexd; do
   if ! rg -q "idevice feature \"$feature\"" <<<"$feature_tree"; then
     echo "error: expected idevice feature is not enabled: $feature" >&2
     exit 1

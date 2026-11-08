@@ -6,6 +6,12 @@ The app needs protocol and security changes that are not yet available in that
 upstream revision, so setup applies the reviewed patch in
 `patches/idevice-device-hub.patch`.
 
+The patch also backports the `cryptexd` service (DDI cryptex lookup and
+install) from upstream commit `730589495cf8aa22d3c7e6391567393b6cb7767d`,
+so the app recognizes the developer image that iOS 26.4 and later install as a
+cryptex. The backported `cryptexd` feature additionally enables `tss`, which
+its install path needs.
+
 `Vendor/idevice` is generated and ignored rather than committed or managed as a
 submodule. `BuildSupport/bootstrap_idevice.py` checks out the immutable upstream
 revision, verifies the patch and resulting source tree, and fails closed if an

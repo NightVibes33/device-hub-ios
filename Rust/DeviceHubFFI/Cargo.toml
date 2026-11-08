@@ -14,7 +14,7 @@ name = "device_hub_ffi"
 [dependencies]
 crc32fast = "1.5"
 ed25519-dalek = { version = "2.2", features = ["zeroize"] }
-idevice = { path = "../../Vendor/idevice/idevice", default-features = false, features = ["ring", "remote_pairing", "tunnel_tcp_stack", "display_stream", "mobile_image_mounter"] }
+idevice = { path = "../../Vendor/idevice/idevice", default-features = false, features = ["ring", "remote_pairing", "tunnel_tcp_stack", "display_stream", "mobile_image_mounter", "cryptexd"] }
 plist = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

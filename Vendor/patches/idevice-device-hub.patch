@@ -11,7 +11,7 @@ index abbd8b1d6e34bf974e5c400b332e2f199b4a9891..d84afa649a42dbafcb920c7be93e9e15
  
  [[package]]
 diff --git a/idevice/Cargo.toml b/idevice/Cargo.toml
-index f360d5347d38f40772622d46b7f9aebd5c610f52..ef6dc8b6ff431ef62fee359b321ec0711dbd57df 100644
+index f360d5347d38f40772622d46b7f9aebd5c610f52..ca8398823a09e9b572ce67fc005f0d8616473dc1 100644
 --- a/idevice/Cargo.toml
 +++ b/idevice/Cargo.toml
 @@ -54,6 +54,7 @@ x25519-dalek = { version = "2", optional = true }
@@ -22,7 +22,15 @@ index f360d5347d38f40772622d46b7f9aebd5c610f52..ef6dc8b6ff431ef62fee359b321ec071
  aes = { version = "0.8", optional = true }
  cbc = { version = "0.1", features = ["alloc"], optional = true }
  hmac = { version = "0.12", optional = true }
-@@ -222,6 +223,8 @@ remote_pairing = [
+@@ -141,6 +142,7 @@ display_stream = [
+   "dep:web-time",
+ ]
+ crashreportcopymobile = ["afc"]
++cryptexd = ["xpc", "rsd", "tss"]
+ debug_proxy = []
+ diagnostics_relay = []
+ dvt = [
+@@ -222,6 +224,8 @@ remote_pairing = [
    "dep:ed25519-dalek",
    "dep:hkdf",
    "dep:chacha20poly1305",
@@ -31,6 +39,147 @@ index f360d5347d38f40772622d46b7f9aebd5c610f52..ef6dc8b6ff431ef62fee359b321ec071
    "dep:idevice-srp",
    "dep:siphasher",
    "dep:uuid",
+@@ -270,6 +274,7 @@ full = [
+   "core_device_proxy",
+   "display_stream",
+   "crashreportcopymobile",
++  "cryptexd",
+   "debug_proxy",
+   "diagnostics_relay",
+   "dvt",
+diff --git a/idevice/src/darwin_errno.rs b/idevice/src/darwin_errno.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2a2d312dccd1d6c99bb7f0705a717b0d68c38b31
+--- /dev/null
++++ b/idevice/src/darwin_errno.rs
+@@ -0,0 +1,127 @@
++//! Darwin (device-side) `errno` values.
++//!
++//! The table is Darwin's `sys/errno.h`
++
++const DARWIN_ERRNO_NAMES: &[(i64, &str)] = &[
++    (1, "EPERM"),
++    (2, "ENOENT"),
++    (3, "ESRCH"),
++    (4, "EINTR"),
++    (5, "EIO"),
++    (6, "ENXIO"),
++    (7, "E2BIG"),
++    (8, "ENOEXEC"),
++    (9, "EBADF"),
++    (10, "ECHILD"),
++    (11, "EDEADLK"),
++    (12, "ENOMEM"),
++    (13, "EACCES"),
++    (14, "EFAULT"),
++    (15, "ENOTBLK"),
++    (16, "EBUSY"),
++    (17, "EEXIST"),
++    (18, "EXDEV"),
++    (19, "ENODEV"),
++    (20, "ENOTDIR"),
++    (21, "EISDIR"),
++    (22, "EINVAL"),
++    (23, "ENFILE"),
++    (24, "EMFILE"),
++    (25, "ENOTTY"),
++    (26, "ETXTBSY"),
++    (27, "EFBIG"),
++    (28, "ENOSPC"),
++    (29, "ESPIPE"),
++    (30, "EROFS"),
++    (31, "EMLINK"),
++    (32, "EPIPE"),
++    (33, "EDOM"),
++    (34, "ERANGE"),
++    (35, "EAGAIN"),
++    (36, "EINPROGRESS"),
++    (37, "EALREADY"),
++    (38, "ENOTSOCK"),
++    (39, "EDESTADDRREQ"),
++    (40, "EMSGSIZE"),
++    (41, "EPROTOTYPE"),
++    (42, "ENOPROTOOPT"),
++    (43, "EPROTONOSUPPORT"),
++    (44, "ESOCKTNOSUPPORT"),
++    (45, "ENOTSUP"),
++    (46, "EPFNOSUPPORT"),
++    (47, "EAFNOSUPPORT"),
++    (48, "EADDRINUSE"),
++    (49, "EADDRNOTAVAIL"),
++    (50, "ENETDOWN"),
++    (51, "ENETUNREACH"),
++    (52, "ENETRESET"),
++    (53, "ECONNABORTED"),
++    (54, "ECONNRESET"),
++    (55, "ENOBUFS"),
++    (56, "EISCONN"),
++    (57, "ENOTCONN"),
++    (58, "ESHUTDOWN"),
++    (59, "ETOOMANYREFS"),
++    (60, "ETIMEDOUT"),
++    (61, "ECONNREFUSED"),
++    (62, "ELOOP"),
++    (63, "ENAMETOOLONG"),
++    (64, "EHOSTDOWN"),
++    (65, "EHOSTUNREACH"),
++    (66, "ENOTEMPTY"),
++    (67, "EPROCLIM"),
++    (68, "EUSERS"),
++    (69, "EDQUOT"),
++    (70, "ESTALE"),
++    (71, "EREMOTE"),
++    (72, "EBADRPC"),
++    (73, "ERPCMISMATCH"),
++    (74, "EPROGUNAVAIL"),
++    (75, "EPROGMISMATCH"),
++    (76, "EPROCUNAVAIL"),
++    (77, "ENOLCK"),
++    (78, "ENOSYS"),
++    (79, "EFTYPE"),
++    (80, "EAUTH"),
++    (81, "ENEEDAUTH"),
++    (82, "EPWROFF"),
++    (83, "EDEVERR"),
++    (84, "EOVERFLOW"),
++    (85, "EBADEXEC"),
++    (86, "EBADARCH"),
++    (87, "ESHLIBVERS"),
++    (88, "EBADMACHO"),
++    (89, "ECANCELED"),
++    (90, "EIDRM"),
++    (91, "ENOMSG"),
++    (92, "EILSEQ"),
++    (93, "ENOATTR"),
++    (94, "EBADMSG"),
++    (95, "EMULTIHOP"),
++    (96, "ENODATA"),
++    (97, "ENOLINK"),
++    (98, "ENOSR"),
++    (99, "ENOSTR"),
++    (100, "EPROTO"),
++    (101, "ETIME"),
++    (102, "EOPNOTSUPP"),
++    (103, "ENOPOLICY"),
++    (104, "ENOTRECOVERABLE"),
++    (105, "EOWNERDEAD"),
++    (106, "EQFULL"),
++    (107, "ENOTCAPABLE"),
++];
++
++pub fn errno_name(error: i64) -> Option<&'static str> {
++    DARWIN_ERRNO_NAMES
++        .iter()
++        .find(|(n, _)| *n == error)
++        .map(|(_, name)| *name)
++}
++
++pub fn describe_errno(error: i64) -> String {
++    match errno_name(error) {
++        Some(name) => format!("{name} ({error})"),
++        None => format!("errno {error}"),
++    }
++}
 diff --git a/idevice/src/http.rs b/idevice/src/http.rs
 index 15a8516045331628f5723ff57af64cce2fa9ff1b..6be8f584a48bb2695dd6748294678a63fc9640e2 100644
 --- a/idevice/src/http.rs
@@ -287,10 +436,18 @@ index 15a8516045331628f5723ff57af64cce2fa9ff1b..6be8f584a48bb2695dd6748294678a63
      fn decodes_chunked() {
          let body = b"4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n";
 diff --git a/idevice/src/lib.rs b/idevice/src/lib.rs
-index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a3f128ea4 100644
+index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..d9e6cd17d2650f7c64c4d39c89a0bf6d1c870520 100644
 --- a/idevice/src/lib.rs
 +++ b/idevice/src/lib.rs
-@@ -52,7 +52,7 @@ pub mod tunnel;
+@@ -6,6 +6,7 @@
+ #[cfg(feature = "pair")]
+ mod ca;
+ pub mod cursor;
++pub mod darwin_errno;
+ #[cfg(feature = "_http")]
+ pub mod http;
+ #[cfg(feature = "mdns")]
+@@ -52,7 +53,7 @@ pub mod tunnel;
  #[cfg(feature = "xpc")]
  pub use xpc::RemoteXpcClient;
  
@@ -299,7 +456,7 @@ index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a
  use provider::{IdeviceProvider, RsdProvider};
  #[cfg(feature = "rustls")]
  use rustls::{crypto::CryptoProvider, pki_types::ServerName};
-@@ -339,7 +339,7 @@ impl Idevice {
+@@ -339,7 +340,7 @@ impl Idevice {
      /// Returns `IdeviceError` if serialization or transmission fails
      async fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
          if let Some(socket) = &mut self.socket {
@@ -308,7 +465,7 @@ index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a
  
              let buf = Vec::new();
              let mut writer = BufWriter::new(buf);
-@@ -366,7 +366,7 @@ impl Idevice {
+@@ -366,7 +367,7 @@ impl Idevice {
      #[allow(dead_code)]
      async fn send_bplist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
          if let Some(socket) = &mut self.socket {
@@ -317,7 +474,7 @@ index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a
  
              let buf = Vec::new();
              let mut writer = BufWriter::new(buf);
-@@ -551,7 +551,7 @@ impl Idevice {
+@@ -551,7 +552,7 @@ impl Idevice {
      async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
          let res = self.read_plist_value().await?;
          let res: plist::Dictionary = plist::from_value(&res)?;
@@ -326,7 +483,7 @@ index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a
  
          if let Some(e) = res.get("Error") {
              let e = match e {
-@@ -564,7 +564,7 @@ impl Idevice {
+@@ -564,7 +565,7 @@ impl Idevice {
                      }
                  }
                  _ => {
@@ -335,7 +492,34 @@ index 03a3a6b2ac1ef1c89cebbaf27cb92265e1d916ca..32774991accc762e50e21bb37b2f333a
                      return Err(IdeviceError::UnexpectedResponse(
                          "error value is not a string or integer".to_string(),
                      ));
-@@ -1099,3 +1099,29 @@ impl IdeviceError {
+@@ -880,6 +881,9 @@ pub enum IdeviceError {
+     #[cfg(feature = "core_device")]
+     #[error(transparent)]
+     CoreDevice(#[from] services::core_device::CoreDeviceError),
++    #[cfg(feature = "cryptexd")]
++    #[error(transparent)]
++    Cryptexd(#[from] services::cryptexd::CryptexdError),
+ 
+     // Feature-gated service errors (single-variant, not worth a sub-enum)
+     #[cfg(feature = "misagent")]
+@@ -1049,6 +1053,8 @@ impl IdeviceError {
+             IdeviceError::InstallationProxy(_) => 107,
+             #[cfg(feature = "core_device")]
+             IdeviceError::CoreDevice(_) => 108,
++            #[cfg(feature = "cryptexd")]
++            IdeviceError::Cryptexd(_) => 110,
+ 
+             // 200+: Feature-gated single-variant service errors
+             #[cfg(feature = "misagent")]
+@@ -1093,9 +1099,37 @@ impl IdeviceError {
+             IdeviceError::InstallationProxy(e) => e.sub_code(),
+             #[cfg(feature = "core_device")]
+             IdeviceError::CoreDevice(e) => e.sub_code(),
++            #[cfg(feature = "cryptexd")]
++            IdeviceError::Cryptexd(e) => e.sub_code(),
+             #[cfg(any(feature = "restore", feature = "preboard_service"))]
+             IdeviceError::Restore(e) => e.sub_code(),
+             _ => 0,
          }
      }
  }
@@ -9677,6 +9861,675 @@ index 0a6ae6f3ea0221a70898e23170d98ae8e0a08cfd..620063d3db7872f32bfd3ec339e33a19
 +        assert!(!state.locked);
      }
  }
+diff --git a/idevice/src/services/cryptexd.rs b/idevice/src/services/cryptexd.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..08ddf134e0e5215b5613e9dece314a2ceb7c4b0b
+--- /dev/null
++++ b/idevice/src/services/cryptexd.rs
+@@ -0,0 +1,451 @@
++//! `cryptexd` over RemoteXPC (`com.apple.security.cryptexd.remote`).
++
++use std::borrow::Cow;
++
++use tracing::debug;
++
++use crate::{
++    IdeviceError, ReadWrite, RemoteXpcClient,
++    darwin_errno::describe_errno,
++    obf,
++    xpc::{Dictionary, XPCObject},
++};
++
++pub mod assets;
++pub mod errors;
++pub use assets::Cryptex1Assets;
++pub use errors::CryptexdError;
++
++/// Capability tags cryptexd advertises in the RSD handshake's `Features`.
++pub const FEATURE_CRYPTEX_INSTALL: &str = "CryptexInstall";
++pub const FEATURE_READ_IDENTIFIERS: &str = "ReadIdentifiers";
++
++pub const NONCE_DOMAIN_CRYPTEX: u64 = 2;
++
++pub const CLIENT_VERSION: u64 = 3;
++pub const DDI_IMAGE_TYPE_INDEX: i64 = 10;
++pub const DDI_PERSISTENCE: u64 = 2;
++pub const DDI_NONCE_PERSISTENCE: u64 = 1;
++
++/// Which nonce domain a `get-nonce` / `roll-nonce` request refers to.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum NonceDomain {
++    Index(u64),
++    Handle(u64),
++}
++
++impl NonceDomain {
++    fn to_argv(self) -> Dictionary {
++        let mut argv = Dictionary::new();
++        match self {
++            NonceDomain::Index(index) => {
++                argv.insert("nonce-domain".into(), XPCObject::UInt64(index));
++            }
++            NonceDomain::Handle(handle) => {
++                argv.insert("nonce-domain-handle".into(), XPCObject::UInt64(handle));
++            }
++        }
++        argv
++    }
++}
++
++impl Default for NonceDomain {
++    fn default() -> Self {
++        NonceDomain::Index(NONCE_DOMAIN_CRYPTEX)
++    }
++}
++
++/// A cryptex currently installed on the device, e.g. the mounted
++/// DeveloperDiskImage.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct InstalledCryptex {
++    pub identifier: String,
++    pub version: String,
++}
++
++/// The payloads and parameters one `install` needs.
++#[derive(Debug, Clone)]
++pub struct CryptexInstallRequest {
++    /// The cryptex disk image, i.e. the manifest's `Cryptex1,GenericDmg`.
++    pub image: Vec<u8>,
++    /// `Cryptex1,GenericTrustCache`.
++    pub trustcache: Vec<u8>,
++    /// The Cryptex1 personalization ticket.
++    pub im4m: Vec<u8>,
++    /// `Cryptex1,CryptexInfoPlist`, which names and versions the cryptex.
++    pub info: Vec<u8>,
++    /// `Cryptex1,GenericVolume` root hash.
++    pub volumehash: Vec<u8>,
++    /// The `Cryptex1,*` parameters from the build identity. Their integers must
++    /// be uint64: int64 is rejected with `Cryptex1,NonceDomain [79:
++    /// Inappropriate file type or format]`.
++    pub cryptex1_properties: Dictionary,
++    pub image_type_index: i64,
++    pub persistence: u64,
++    pub nonce_persistence: u64,
++    pub auth: u64,
++}
++
++impl CryptexInstallRequest {
++    /// A request with the four `DDI` defaults Xcode uses
++    /// ([`DDI_IMAGE_TYPE_INDEX`], [`DDI_PERSISTENCE`],
++    /// [`DDI_NONCE_PERSISTENCE`], `auth = 0`).
++    pub fn new(
++        image: Vec<u8>,
++        trustcache: Vec<u8>,
++        im4m: Vec<u8>,
++        info: Vec<u8>,
++        volumehash: Vec<u8>,
++        cryptex1_properties: Dictionary,
++    ) -> Self {
++        Self {
++            image,
++            trustcache,
++            im4m,
++            info,
++            volumehash,
++            cryptex1_properties,
++            image_type_index: DDI_IMAGE_TYPE_INDEX,
++            persistence: DDI_PERSISTENCE,
++            nonce_persistence: DDI_NONCE_PERSISTENCE,
++            auth: 0,
++        }
++    }
++}
++
++#[derive(Debug)]
++pub struct CryptexdClient<R: ReadWrite> {
++    inner: RemoteXpcClient<R>,
++}
++
++#[cfg(feature = "rsd")]
++impl crate::RsdService for CryptexdClient<Box<dyn ReadWrite>> {
++    fn rsd_service_name() -> Cow<'static, str> {
++        obf!("com.apple.security.cryptexd.remote")
++    }
++
++    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
++        Self::new(stream).await
++    }
++}
++
++impl<R: ReadWrite> CryptexdClient<R> {
++    pub async fn new(stream: R) -> Result<Self, IdeviceError> {
++        let mut inner = RemoteXpcClient::new(stream).await?;
++        inner.do_handshake().await?;
++        Ok(Self { inner })
++    }
++
++    /// Sends one `routine` request and returns its `argv` payload.
++    ///
++    /// Consumes the client: the daemon closes the connection after a routine.
++    pub async fn invoke(
++        mut self,
++        routine: &str,
++        argv: Dictionary,
++    ) -> Result<Option<plist::Value>, IdeviceError> {
++        let mut req = Dictionary::new();
++        req.insert("routine".into(), XPCObject::String(routine.to_string()));
++        req.insert("argv".into(), XPCObject::Dictionary(argv));
++
++        self.inner.send_object(req, true).await?;
++        let res = self.inner.recv().await?;
++        unwrap_reply(routine, res)
++    }
++
++    /// Reads the device's AppleImage4 chip instance, which identifies it in a
++    /// Cryptex1 personalization request.
++    ///
++    /// The keys are the daemon's `img4_chip_*` names, e.g. `img4_chip_chip`
++    /// (ChipID), `img4_chip_bord` (BoardID) and `img4_chip_ecid` (ECID).
++    pub async fn read_personalization_identifiers(self) -> Result<plist::Dictionary, IdeviceError> {
++        let res = self
++            .invoke("read-personalization-id", Dictionary::new())
++            .await?;
++        res.and_then(plist::Value::into_dictionary)
++            .ok_or_else(|| CryptexdError::MissingField("argv").into())
++    }
++
++    /// Lists the cryptexes installed on the device.
++    pub async fn copy_installed(self) -> Result<Vec<InstalledCryptex>, IdeviceError> {
++        let res = self.invoke("copy-installed", Dictionary::new()).await?;
++        let Some(res) = res.and_then(plist::Value::into_dictionary) else {
++            return Ok(Vec::new());
++        };
++        let Some(array) = res.get("remote-cryptex-array").and_then(|v| v.as_array()) else {
++            return Ok(Vec::new());
++        };
++
++        Ok(array
++            .iter()
++            .filter_map(|entry| {
++                let entry = entry.as_dictionary()?;
++                Some(InstalledCryptex {
++                    identifier: entry
++                        .get("remote-cryptex-identifier")?
++                        .as_string()?
++                        .to_string(),
++                    version: entry
++                        .get("remote-cryptex-version")?
++                        .as_string()?
++                        .to_string(),
++                })
++            })
++            .collect())
++    }
++
++    /// Reads a nonce domain's nonce structure.
++    /// [`cryptex_nonce`](Self::cryptex_nonce) for the nonce TSS wants.
++    pub async fn get_nonce(self, domain: NonceDomain) -> Result<Vec<u8>, IdeviceError> {
++        let res = self.invoke("get-nonce", domain.to_argv()).await?;
++        res.as_ref()
++            .and_then(plist::Value::as_dictionary)
++            .and_then(|d| d.get("nonce"))
++            .and_then(|v| v.as_data())
++            .map(<[u8]>::to_vec)
++            .ok_or_else(|| CryptexdError::MissingField("nonce").into())
++    }
++
++    pub async fn cryptex_nonce(self, nonce_domain_handle: u64) -> Result<Vec<u8>, IdeviceError> {
++        let blob = self
++            .get_nonce(NonceDomain::Handle(nonce_domain_handle))
++            .await?;
++        unwrap_nonce(&blob)
++    }
++
++    /// Rolls (regenerates) a nonce domain's nonce, invalidating anything
++    /// personalized against the previous one.
++    pub async fn roll_nonce(mut self, domain: NonceDomain) -> Result<(), IdeviceError> {
++        let mut req = Dictionary::new();
++        req.insert("routine".into(), XPCObject::String("roll-nonce".into()));
++        req.insert("argv".into(), XPCObject::Dictionary(domain.to_argv()));
++        for (key, value) in domain.to_argv() {
++            req.insert(key, value);
++        }
++
++        self.inner.send_object(req, true).await?;
++        let res = self.inner.recv().await?;
++        unwrap_reply("roll-nonce", res)?;
++        Ok(())
++    }
++
++    /// Uninstalls a cryptex by the identifier [`copy_installed`](Self::copy_installed)
++    /// reports, optionally scoped to one version.
++    pub async fn uninstall(
++        self,
++        identifier: &str,
++        version: Option<&str>,
++    ) -> Result<(), IdeviceError> {
++        let mut argv = Dictionary::new();
++        argv.insert(
++            "remote-cryptex-identifier".into(),
++            XPCObject::String(identifier.to_string()),
++        );
++        if let Some(version) = version {
++            argv.insert(
++                "remote-cryptex-version".into(),
++                XPCObject::String(version.to_string()),
++            );
++        }
++        self.invoke("uninstall", argv).await?;
++        Ok(())
++    }
++
++    /// Installs a cryptex.
++    ///
++    /// The five payloads are announced in the request as XPC file transfers and
++    /// then pushed on their own streams; the daemon only replies once it has
++    /// consumed all of them.
++    pub async fn install(mut self, request: CryptexInstallRequest) -> Result<(), IdeviceError> {
++        let transfers: [(&str, &[u8]); 5] = [
++            ("image", &request.image),
++            ("trustcache", &request.trustcache),
++            ("im4m", &request.im4m),
++            ("info", &request.info),
++            ("volumehash", &request.volumehash),
++        ];
++
++        let mut argv = crate::xpc!({
++            "auth": XPCObject::UInt64(request.auth),
++            "client-version": XPCObject::UInt64(CLIENT_VERSION),
++            "cryptex1-properties": XPCObject::Dictionary(request.cryptex1_properties.clone()),
++            "image-type-index": XPCObject::Int64(request.image_type_index),
++            "nonce-persistence": XPCObject::UInt64(request.nonce_persistence),
++            "persistence": XPCObject::UInt64(request.nonce_persistence)
++        })
++        .to_dictionary()
++        .unwrap();
++
++        for (transfer_id, (key, payload)) in transfers.iter().enumerate() {
++            let mut size = Dictionary::new();
++            size.insert("s".into(), XPCObject::UInt64(payload.len() as u64));
++            argv.insert(
++                (*key).to_string(),
++                XPCObject::FileTransfer {
++                    msg_id: transfer_id as u64 + 1,
++                    data: Box::new(XPCObject::Dictionary(size)),
++                },
++            );
++        }
++
++        let req = crate::xpc!({
++            "routine": "install",
++            "argv": XPCObject::Dictionary(argv)
++        });
++        self.inner.send_object(req, true).await?;
++
++        for (transfer_id, (key, payload)) in transfers.iter().enumerate() {
++            debug!("pushing cryptex {key} payload ({} bytes)", payload.len());
++            self.inner
++                .send_file_transfer(transfer_id as u64 + 1, payload)
++                .await?;
++        }
++
++        let res = self.inner.recv().await?;
++        unwrap_reply("install", res)?;
++        Ok(())
++    }
++}
++
++/// Turns a cryptexd reply into its `argv` payload, or an error.
++fn unwrap_reply(
++    routine: &str,
++    response: plist::Value,
++) -> Result<Option<plist::Value>, IdeviceError> {
++    let mut response = response
++        .into_dictionary()
++        .ok_or(CryptexdError::MissingField("(root)"))?;
++
++    if let Some(cferr) = response.get("cferr").and_then(|v| v.as_dictionary()) {
++        let description = cferr
++            .get("cferr_userinfo")
++            .and_then(|v| v.as_dictionary())
++            .and_then(|d| d.get("NSLocalizedDescription"))
++            .and_then(|v| v.as_string())
++            .map(str::to_string)
++            .unwrap_or_else(|| format!("{cferr:?}"));
++        let domain = cferr
++            .get("cferr_domain")
++            .and_then(|v| v.as_string())
++            .unwrap_or("?");
++        let code = cferr
++            .get("cferr_code")
++            .and_then(|v| v.as_signed_integer())
++            .unwrap_or_default();
++        return Err(CryptexdError::RoutineFailed {
++            routine: routine.to_string(),
++            detail: format!("{description} ({domain}: {code})"),
++        }
++        .into());
++    }
++
++    // Successful replies carry error=0; read-personalization-id omits the key.
++    let error = response
++        .get("error")
++        .and_then(|v| v.as_signed_integer())
++        .unwrap_or(0);
++    if error != 0 {
++        return Err(CryptexdError::RoutineFailed {
++            routine: routine.to_string(),
++            detail: describe_errno(error),
++        }
++        .into());
++    }
++
++    Ok(response.remove("argv"))
++}
++
++/// Extracts the nonce from cryptexd's nonce structure: a 2-byte lead, the nonce
++/// itself, then its length as a little-endian `u32`.
++pub fn unwrap_nonce(blob: &[u8]) -> Result<Vec<u8>, IdeviceError> {
++    if blob.len() < 6 {
++        return Err(CryptexdError::MalformedNonce(blob.len()).into());
++    }
++    let len_bytes = &blob[blob.len() - 4..];
++    let len = u32::from_le_bytes([len_bytes[0], len_bytes[1], len_bytes[2], len_bytes[3]]) as usize;
++    if 2 + len > blob.len() {
++        return Err(CryptexdError::MalformedNonce(blob.len()).into());
++    }
++    Ok(blob[2..2 + len].to_vec())
++}
++
++/// Personalizes and installs the DeveloperDiskImage cryptex end to end. The
++/// cryptex equivalent of the image mounter's auto-mount.
++///
++/// Reads the device's personalization identifiers and cryptex nonce, has Apple
++/// sign a Cryptex1 ticket for them, and installs the assets, all over
++/// `cryptexd` and without the image mounter. Each step opens its own connection,
++/// since the daemon serves one routine per connection.
++#[cfg(all(feature = "rsd", feature = "tss"))]
++pub async fn install_ddi(
++    provider: &mut impl crate::provider::RsdProvider,
++    handshake: &mut crate::rsd::RsdHandshake,
++    assets: &Cryptex1Assets,
++) -> Result<InstalledCryptex, IdeviceError> {
++    use crate::RsdService as _;
++
++    async fn client<P: crate::provider::RsdProvider>(
++        provider: &mut P,
++        handshake: &mut crate::rsd::RsdHandshake,
++    ) -> Result<CryptexdClient<Box<dyn ReadWrite>>, IdeviceError> {
++        CryptexdClient::connect_rsd(provider, handshake).await
++    }
++
++    let chip_instance = client(provider, handshake)
++        .await?
++        .read_personalization_identifiers()
++        .await?;
++    let nonce = client(provider, handshake)
++        .await?
++        .cryptex_nonce(assets.nonce_domain()?)
++        .await?;
++
++    let mut request = crate::tss::TSSRequest::new();
++    request.add_cryptex1_tags(&assets.build_identity, &chip_instance, &nonce)?;
++    let response = request
++        .send()
++        .await?
++        .into_dictionary()
++        .ok_or(CryptexdError::MissingField("(TSS response)"))?;
++    // Cryptex1 responses carry the ticket under its own key on current releases
++    // and under the AP key on older ones.
++    let im4m = response
++        .get("Cryptex1,Ticket")
++        .or_else(|| response.get("ApImg4Ticket"))
++        .and_then(|v| v.as_data())
++        .ok_or(CryptexdError::MissingField("Cryptex1,Ticket"))?
++        .to_vec();
++
++    client(provider, handshake)
++        .await?
++        .install(CryptexInstallRequest::new(
++            assets.image.clone(),
++            assets.trustcache.clone(),
++            im4m,
++            assets.info.clone(),
++            assets.volumehash.clone(),
++            assets.cryptex1_properties()?,
++        ))
++        .await?;
++
++    installed_ddi(provider, handshake)
++        .await?
++        .ok_or(IdeviceError::ImageNotMounted)
++}
++
++/// The installed DeveloperDiskImage cryptex, if there is one.
++#[cfg(feature = "rsd")]
++pub async fn installed_ddi(
++    provider: &mut impl crate::provider::RsdProvider,
++    handshake: &mut crate::rsd::RsdHandshake,
++) -> Result<Option<InstalledCryptex>, IdeviceError> {
++    use crate::{RsdService as _, obf};
++
++    let client: CryptexdClient<Box<dyn ReadWrite>> =
++        CryptexdClient::connect_rsd(provider, handshake).await?;
++    Ok(client
++        .copy_installed()
++        .await?
++        .into_iter()
++        .find(|c| c.identifier == obf!("com.apple.MobileAsset.DDI")))
++}
+diff --git a/idevice/src/services/cryptexd/assets.rs b/idevice/src/services/cryptexd/assets.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e086660e000e082ce86c76a92c1dc410a5ede1d6
+--- /dev/null
++++ b/idevice/src/services/cryptexd/assets.rs
+@@ -0,0 +1,164 @@
++//! The payloads a Cryptex1 DeveloperDiskImage install needs, read out of an
++//! unpacked DDI `Restore` directory.
++
++use std::path::{Path, PathBuf};
++
++use crate::{
++    IdeviceError,
++    xpc::{Dictionary, XPCObject},
++};
++
++use super::CryptexdError;
++
++/// The four payloads and the parameters needed to install a Cryptex1 image.
++#[derive(Debug, Clone)]
++pub struct Cryptex1Assets {
++    pub image: Vec<u8>,
++    pub trustcache: Vec<u8>,
++    pub info: Vec<u8>,
++    pub volumehash: Vec<u8>,
++    /// The build identity the payloads came from, i.e. the argument for
++    /// [`TSSRequest::add_cryptex1_tags`](crate::tss::TSSRequest::add_cryptex1_tags).
++    pub build_identity: plist::Dictionary,
++}
++
++const PAYLOAD_KEYS: [&str; 4] = [
++    "Cryptex1,GenericDmg",
++    "Cryptex1,GenericTrustCache",
++    "Cryptex1,CryptexInfoPlist",
++    "Cryptex1,GenericVolume",
++];
++
++impl Cryptex1Assets {
++    /// Loads the payloads from an unpacked DDI `Restore` directory.
++    #[cfg(not(target_arch = "wasm32"))]
++    pub async fn load(restore_dir: impl AsRef<Path>) -> Result<Self, IdeviceError> {
++        let restore_dir = restore_dir.as_ref();
++        let manifest_path = restore_dir.join("BuildManifest.plist");
++        let manifest = tokio::fs::read(&manifest_path).await.map_err(|e| {
++            CryptexdError::BadDdiBundle(format!("cannot read {}: {e}", manifest_path.display()))
++        })?;
++        let manifest: plist::Dictionary = plist::from_bytes(&manifest)?;
++        let build_identity = crate::tss::select_cryptex_build_identity(&manifest)?.clone();
++
++        let mut payloads = Vec::with_capacity(PAYLOAD_KEYS.len());
++        for key in PAYLOAD_KEYS {
++            let path = restore_dir.join(payload_path(&build_identity, key)?);
++            payloads.push(tokio::fs::read(&path).await.map_err(|e| {
++                CryptexdError::BadDdiBundle(format!("cannot read {}: {e}", path.display()))
++            })?);
++        }
++        let mut payloads = payloads.into_iter();
++
++        Ok(Self {
++            image: payloads.next().expect("four payloads read above"),
++            trustcache: payloads.next().expect("four payloads read above"),
++            info: payloads.next().expect("four payloads read above"),
++            volumehash: payloads.next().expect("four payloads read above"),
++            build_identity,
++        })
++    }
++
++    /// Builds the assets from payloads the caller already has in memory, e.g.
++    /// from an archive or a download.
++    pub fn from_parts(
++        image: Vec<u8>,
++        trustcache: Vec<u8>,
++        info: Vec<u8>,
++        volumehash: Vec<u8>,
++        build_identity: plist::Dictionary,
++    ) -> Self {
++        Self {
++            image,
++            trustcache,
++            info,
++            volumehash,
++            build_identity,
++        }
++    }
++
++    /// Handle (not index) of the nonce domain this cryptex is personalized
++    /// against, i.e. the identity's `Cryptex1,NonceDomain`.
++    pub fn nonce_domain(&self) -> Result<u64, IdeviceError> {
++        self.build_identity
++            .get("Cryptex1,NonceDomain")
++            .and_then(|v| v.as_unsigned_integer())
++            .ok_or_else(|| {
++                CryptexdError::BadDdiBundle("build identity has no Cryptex1,NonceDomain".into())
++                    .into()
++            })
++    }
++
++    pub fn cryptex1_properties(&self) -> Result<Dictionary, IdeviceError> {
++        fn uint(
++            identity: &plist::Dictionary,
++            key: &'static str,
++        ) -> Result<XPCObject, IdeviceError> {
++            identity
++                .get(key)
++                .and_then(|v| v.as_unsigned_integer())
++                .map(XPCObject::UInt64)
++                .ok_or_else(|| {
++                    CryptexdError::BadDdiBundle(format!("build identity has no unsigned {key}"))
++                        .into()
++                })
++        }
++
++        fn passthrough(
++            identity: &plist::Dictionary,
++            key: &'static str,
++        ) -> Result<XPCObject, IdeviceError> {
++            identity
++                .get(key)
++                .map(|v| XPCObject::from(v.clone()))
++                .ok_or_else(|| {
++                    CryptexdError::BadDdiBundle(format!("build identity has no {key}")).into()
++                })
++        }
++
++        let identity = &self.build_identity;
++        let mut properties = Dictionary::new();
++        properties.insert(
++            "Cryptex1,UseProductClass".into(),
++            passthrough(identity, "Cryptex1,UseProductClass")?,
++        );
++        properties.insert("MountedCryptex".into(), XPCObject::Bool(false));
++        properties.insert(
++            "Cryptex1,SubType".into(),
++            uint(identity, "Cryptex1,SubType")?,
++        );
++        properties.insert(
++            "Cryptex1,NonceDomain".into(),
++            uint(identity, "Cryptex1,NonceDomain")?,
++        );
++        properties.insert(
++            "Cryptex1,Version".into(),
++            passthrough(identity, "Cryptex1,Version")?,
++        );
++        // The daemon calls it PreauthVersion; the manifest spells it out.
++        properties.insert(
++            "Cryptex1,PreauthVersion".into(),
++            passthrough(identity, "Cryptex1,PreauthorizationVersion")?,
++        );
++        Ok(properties)
++    }
++}
++
++fn payload_path(
++    build_identity: &plist::Dictionary,
++    key: &'static str,
++) -> Result<PathBuf, IdeviceError> {
++    build_identity
++        .get("Manifest")
++        .and_then(|m| m.as_dictionary())
++        .and_then(|m| m.get(key))
++        .and_then(|e| e.as_dictionary())
++        .and_then(|e| e.get("Info"))
++        .and_then(|i| i.as_dictionary())
++        .and_then(|i| i.get("Path"))
++        .and_then(|p| p.as_string())
++        .map(PathBuf::from)
++        .ok_or_else(|| {
++            CryptexdError::BadDdiBundle(format!("build manifest has no path for {key}")).into()
++        })
++}
+diff --git a/idevice/src/services/cryptexd/errors.rs b/idevice/src/services/cryptexd/errors.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d678774a019b22df5a9875200fd25cc62694019c
+--- /dev/null
++++ b/idevice/src/services/cryptexd/errors.rs
+@@ -0,0 +1,36 @@
++//! Errors specific to `cryptexd`.
++
++use thiserror::Error;
++
++/// Failures talking to the device's `cryptexd`.
++#[derive(Error, Debug)]
++#[non_exhaustive]
++pub enum CryptexdError {
++    /// The daemon rejected a routine, either with a `cferr` or a non-zero
++    /// device-side errno.
++    #[error("cryptexd routine `{routine}` failed: {detail}")]
++    RoutineFailed { routine: String, detail: String },
++
++    /// A field the reply was required to contain was absent.
++    #[error("cryptexd reply missing required field `{0}`")]
++    MissingField(&'static str),
++
++    /// A nonce structure was too short to hold the nonce it declared.
++    #[error("cryptexd returned a malformed {0}-byte nonce structure")]
++    MalformedNonce(usize),
++
++    /// The DDI bundle on disk didn't hold what a cryptex install needs.
++    #[error("developer disk image bundle is unusable: {0}")]
++    BadDdiBundle(String),
++}
++
++impl CryptexdError {
++    pub fn sub_code(&self) -> i32 {
++        match self {
++            Self::RoutineFailed { .. } => 1,
++            Self::MissingField(_) => 2,
++            Self::MalformedNonce(_) => 3,
++            Self::BadDdiBundle(_) => 4,
++        }
++    }
++}
 diff --git a/idevice/src/services/dvt/message.rs b/idevice/src/services/dvt/message.rs
 index f2e07b9abf7f19f44af2112612cd31b9e69f9f52..424a0c7c94ce625f3155e5c43339dbf27d94b2c2 100644
 --- a/idevice/src/services/dvt/message.rs
@@ -10845,8 +11698,21 @@ index 57d68d738c464a0fb51e96ac0442fc7b58383543..3ed56bdc233c4bc59ddfe7c66a733330
 +        assert_eq!(reader.position(), prefix.len() as u64);
 +    }
 +}
+diff --git a/idevice/src/services/mod.rs b/idevice/src/services/mod.rs
+index 2c267c32b57135ad203328cd28f13003a5d881f7..b4183b8b67d22ac7ba30b286f67cc2bc85e39e07 100644
+--- a/idevice/src/services/mod.rs
++++ b/idevice/src/services/mod.rs
+@@ -12,6 +12,8 @@ pub mod core_device;
+ pub mod core_device_proxy;
+ #[cfg(feature = "crashreportcopymobile")]
+ pub mod crashreportcopymobile;
++#[cfg(feature = "cryptexd")]
++pub mod cryptexd;
+ #[cfg(feature = "debug_proxy")]
+ pub mod debug_proxy;
+ #[cfg(feature = "diagnostics_relay")]
 diff --git a/idevice/src/tss.rs b/idevice/src/tss.rs
-index 8529c463f5b859f7d6ef8dbb20b83f05f99ca359..c8bd0b235e5f16c2c7ad8345125cb9f7e64ecc03 100644
+index 8529c463f5b859f7d6ef8dbb20b83f05f99ca359..cba47e8377f3109591f41a7d903146240d965a5e 100644
 --- a/idevice/src/tss.rs
 +++ b/idevice/src/tss.rs
 @@ -14,15 +14,55 @@ use crate::IdeviceError;
@@ -10957,10 +11823,194 @@ index 8529c463f5b859f7d6ef8dbb20b83f05f99ca359..c8bd0b235e5f16c2c7ad8345125cb9f7
      }
  
      /// Sets the `@ApImg4Ticket` request flag.
-@@ -585,3 +597,114 @@ pub fn extract_img4_ticket(response: &plist::Dictionary) -> Result<Vec<u8>, Idev
+@@ -121,6 +133,133 @@ impl TSSRequest {
+         self.insert("@BBTicket", value);
+     }
+ 
++    /// Builds a Cryptex1 personalization request (`@Cryptex1,Ticket`).
++    ///
++    /// Cryptex1 tickets have a different shape from the AP tickets
++    /// [`add_ap_tags`](Self::add_ap_tags) produces, which is why that method
++    /// skips every `Cryptex1,*` key. The device is identified by `Cryptex1,UDID`
++    /// alone - none of the `Ap*` tags an AP request carries appear here - and
++    /// each personalized component contributes nothing but its `Digest`. The
++    /// generic DMG is declared `Personalize: false` in the build manifest and is
++    /// left out entirely.
++    ///
++    /// # Arguments
++    /// * `build_identity` - the build identity whose `Info.Variant` names a
++    ///   cryptex, i.e. the one carrying the `Cryptex1,*` manifest entries.
++    /// * `chip_instance` - the device's AppleImage4 chip instance, as returned by
++    ///   cryptexd's `read-personalization-id` routine.
++    /// * `nonce` - the cryptex nonce for the identity's `Cryptex1,NonceDomain`.
++    pub fn add_cryptex1_tags(
++        &mut self,
++        build_identity: &plist::Dictionary,
++        chip_instance: &plist::Dictionary,
++        nonce: &[u8],
++    ) -> Result<(), IdeviceError> {
++        fn required<'a>(
++            dict: &'a plist::Dictionary,
++            key: &'static str,
++        ) -> Result<&'a Value, IdeviceError> {
++            dict.get(key).ok_or_else(|| {
++                IdeviceError::UnexpectedResponse(format!("cryptex identity is missing {key}"))
++            })
++        }
++
++        /// Manifest values come as either an integer or a `0x`-prefixed string.
++        fn as_number(value: &Value, key: &'static str) -> Result<u64, IdeviceError> {
++            match value {
++                Value::Integer(i) => i.as_unsigned().ok_or_else(|| {
++                    IdeviceError::UnexpectedResponse(format!("{key} is not an unsigned integer"))
++                }),
++                Value::String(s) => {
++                    let trimmed = s.trim_start_matches("0x");
++                    let radix = if trimmed.len() == s.len() { 10 } else { 16 };
++                    u64::from_str_radix(trimmed, radix).map_err(|_| {
++                        IdeviceError::UnexpectedResponse(format!("{key} is not a number: {s}"))
++                    })
++                }
++                _ => Err(IdeviceError::UnexpectedResponse(format!(
++                    "{key} is neither an integer nor a string"
++                ))),
++            }
++        }
++
++        self.insert("@Cryptex1,Ticket", true);
++        self.insert(
++            "Cryptex1,ChipID",
++            as_number(
++                required(build_identity, "Cryptex1,ChipID")?,
++                "Cryptex1,ChipID",
++            )?,
++        );
++        self.insert(
++            "Cryptex1,ProductClass",
++            as_number(
++                required(build_identity, "Cryptex1,ProductClass")?,
++                "Cryptex1,ProductClass",
++            )?,
++        );
++        for key in [
++            "Cryptex1,Type",
++            "Cryptex1,SubType",
++            "Cryptex1,UseProductClass",
++            "Cryptex1,NonceDomain",
++            "Cryptex1,Version",
++            "Cryptex1,PreauthorizationVersion",
++        ] {
++            self.insert(key, required(build_identity, key)?.clone());
++        }
++        self.insert("Cryptex1,Nonce", Value::Data(nonce.to_vec()));
++        self.insert(
++            "Cryptex1,ProductionMode",
++            required(chip_instance, "img4_chip_cpro")?
++                .as_boolean()
++                .or_else(|| {
++                    // The daemon reports the flag as an integer on some releases.
++                    chip_instance
++                        .get("img4_chip_cpro")
++                        .and_then(|v| v.as_unsigned_integer())
++                        .map(|v| v != 0)
++                })
++                .ok_or_else(|| {
++                    IdeviceError::UnexpectedResponse("img4_chip_cpro is not a boolean".into())
++                })?,
++        );
++        self.insert("Cryptex1,UDID", Value::Data(cryptex1_udid(chip_instance)?));
++        self.insert("Cryptex1,UniqueTagList", Value::Data(Vec::new()));
++
++        let manifest = build_identity
++            .get("Manifest")
++            .and_then(|m| m.as_dictionary())
++            .ok_or_else(|| {
++                IdeviceError::UnexpectedResponse("cryptex identity is missing Manifest".into())
++            })?;
++        for (key, entry) in manifest {
++            if !key.starts_with("Cryptex1,") {
++                continue;
++            }
++            let entry = match entry.as_dictionary() {
++                Some(e) => e,
++                None => continue,
++            };
++            let personalize = entry
++                .get("Info")
++                .and_then(|i| i.as_dictionary())
++                .and_then(|i| i.get("Personalize"))
++                .and_then(|p| p.as_boolean())
++                .unwrap_or(false);
++            if !personalize {
++                debug!("skipping {key} as it is not personalized");
++                continue;
++            }
++            let digest = entry
++                .get("Digest")
++                .ok_or_else(|| IdeviceError::UnexpectedResponse(format!("{key} has no Digest")))?;
++            self.insert(key.clone(), crate::plist!({ "Digest": digest.clone() }));
++        }
++
++        Ok(())
++    }
++
+     /// Adds the common `Ap*` identity tags shared by the developer-disk-image
+     /// personalization flow and the full IPSW restore flow.
+     ///
+@@ -585,3 +724,164 @@ pub fn extract_img4_ticket(response: &plist::Dictionary) -> Result<Vec<u8>, Idev
          )),
      }
  }
++
++/// Builds the `Cryptex1,UDID` identifying a device in a Cryptex1 TSS request.
++///
++/// It is the 16-byte concatenation of the chip ID and the ECID, both big-endian,
++/// and lands in the signed ticket verbatim as the `UDID` property.
++pub fn cryptex1_udid(chip_instance: &plist::Dictionary) -> Result<Vec<u8>, IdeviceError> {
++    fn field(chip_instance: &plist::Dictionary, key: &'static str) -> Result<u64, IdeviceError> {
++        chip_instance
++            .get(key)
++            .and_then(|v| v.as_unsigned_integer())
++            .ok_or_else(|| {
++                IdeviceError::UnexpectedResponse(format!(
++                    "chip instance is missing an unsigned {key}"
++                ))
++            })
++    }
++
++    let mut udid = field(chip_instance, "img4_chip_chip")?
++        .to_be_bytes()
++        .to_vec();
++    udid.extend_from_slice(&field(chip_instance, "img4_chip_ecid")?.to_be_bytes());
++    Ok(udid)
++}
++
++/// Selects the one build identity in a DDI build manifest that describes a
++/// cryptex, i.e. the one whose `Info.Variant` ends in
++/// `Developer Disk Image Cryptex`.
++pub fn select_cryptex_build_identity(
++    build_manifest: &plist::Dictionary,
++) -> Result<&plist::Dictionary, IdeviceError> {
++    const CRYPTEX_VARIANT_SUFFIX: &str = "Developer Disk Image Cryptex";
++
++    build_manifest
++        .get("BuildIdentities")
++        .and_then(|i| i.as_array())
++        .and_then(|identities| {
++            identities.iter().find_map(|identity| {
++                let identity = identity.as_dictionary()?;
++                let variant = identity
++                    .get("Info")
++                    .and_then(|i| i.as_dictionary())
++                    .and_then(|i| i.get("Variant"))
++                    .and_then(|v| v.as_string())?;
++                variant
++                    .ends_with(CRYPTEX_VARIANT_SUFFIX)
++                    .then_some(identity)
++            })
++        })
++        .ok_or(IdeviceError::BadBuildManifest)
++}
 +
 +#[cfg(test)]
 +mod tests {
@@ -11219,6 +12269,319 @@ index 50d3ac561b54aaf7cedbe37023a2e3b84a11a348..8ca26b7304aa0d89acb8913bca1f1ae1
  
          Ok(res)
      }
+diff --git a/idevice/src/xpc/http2/frame.rs b/idevice/src/xpc/http2/frame.rs
+index d9b51533cb3bd553bb569d7ec99e611905479588..fa3a70f203bb2b77f29fb851b93a9d3fe40a28dd 100644
+--- a/idevice/src/xpc/http2/frame.rs
++++ b/idevice/src/xpc/http2/frame.rs
+@@ -18,6 +18,7 @@ pub enum Frame {
+     WindowUpdate(WindowUpdateFrame),
+     Headers(HeadersFrame),
+     Data(DataFrame),
++    RstStream(RstStreamFrame),
+ }
+ 
+ impl Frame {
+@@ -48,9 +49,10 @@ impl Frame {
+             0x00 => Self::Data(DataFrame {
+                 stream_id,
+                 payload: body.to_vec(),
++                end_stream: flags & 0x01 != 0,
+             }),
+             0x01 => Self::Headers(HeadersFrame { stream_id }),
+-            0x03 => return Err(XpcError::HttpStreamReset.into()),
++            0x03 => Self::RstStream(RstStreamFrame { stream_id }),
+             0x04 => {
+                 // settings: a sequence of (u16 identifier, u32 value) entries
+                 let mut settings = Vec::new();
+@@ -180,17 +182,25 @@ impl HttpFrame for HeadersFrame {
+     }
+ }
+ 
++#[derive(Debug, Clone)]
++pub struct RstStreamFrame {
++    pub stream_id: u32,
++}
++
+ #[derive(Debug, Clone)]
+ pub struct DataFrame {
+     pub stream_id: u32,
+     pub payload: Vec<u8>,
++    /// Sets END_STREAM, marking this as the last frame we send on the stream.
++    pub end_stream: bool,
+ }
+ 
+ impl HttpFrame for DataFrame {
+     fn serialize(&self) -> Vec<u8> {
+         let mut res = (self.payload.len() as u32).to_be_bytes().to_vec();
+         res.remove(0); // only 3 significant bytes
+-        res.extend([0x00, 0x00]); // frame type, flags
++        res.push(0x00); // frame type
++        res.push(if self.end_stream { 0x01 } else { 0x00 }); // flags
+         res.extend(self.stream_id.to_be_bytes());
+         res.extend(self.payload.clone());
+         res
+diff --git a/idevice/src/xpc/http2/mod.rs b/idevice/src/xpc/http2/mod.rs
+index 9aeb1f701ac1d61ff53f5bfb9a96548c2addd9c7..7681a038f226d5933d037433df76f767af3dbd26 100644
+--- a/idevice/src/xpc/http2/mod.rs
++++ b/idevice/src/xpc/http2/mod.rs
+@@ -30,9 +30,13 @@ pub struct Http2Client<R: ReadWrite> {
+     /// stream starts with.
+     peer_initial_window: i64,
+     /// Raw inbound bytes not yet parsed into a whole frame. Persisting this
+-    /// across reads keeps [`Self::pump`] (and therefore `recv_push`)
+-    /// cancellation-safe: a partially-received frame survives a dropped read.
++    /// across reads keeps [`Self::pump`] cancellation-safe: a partially-received
++    /// frame survives a dropped read.
+     recv_buf: Vec<u8>,
++    /// Streams we finished pushing an outbound file transfer on. The device
++    /// resets them once it has the payload, so a RST_STREAM for one of these is
++    /// normal completion rather than an error.
++    finished_file_transfer_streams: std::collections::HashSet<u32>,
+ }
+ 
+ impl<R: ReadWrite> Http2Client<R> {
+@@ -47,6 +51,7 @@ impl<R: ReadWrite> Http2Client<R> {
+             stream_send_windows: HashMap::new(),
+             peer_initial_window: DEFAULT_WINDOW,
+             recv_buf: Vec::new(),
++            finished_file_transfer_streams: std::collections::HashSet::new(),
+         })
+     }
+ 
+@@ -112,6 +117,29 @@ impl<R: ReadWrite> Http2Client<R> {
+     }
+ 
+     pub async fn send(&mut self, payload: Vec<u8>, stream_id: u32) -> Result<(), IdeviceError> {
++        self.send_inner(payload, stream_id, false).await
++    }
++
++    /// Sends `payload` and closes our half of the stream with END_STREAM.
++    ///
++    /// Used to finish an outbound file transfer: the device resets the stream
++    /// once it has the payload, and [`Self::pump`] treats that reset as normal
++    /// completion rather than an error.
++    pub async fn send_end_stream(
++        &mut self,
++        payload: Vec<u8>,
++        stream_id: u32,
++    ) -> Result<(), IdeviceError> {
++        self.finished_file_transfer_streams.insert(stream_id);
++        self.send_inner(payload, stream_id, true).await
++    }
++
++    async fn send_inner(
++        &mut self,
++        payload: Vec<u8>,
++        stream_id: u32,
++        end_stream: bool,
++    ) -> Result<(), IdeviceError> {
+         const MAX_FRAME_SIZE: usize = 16384;
+         let mut chunks = payload.chunks(MAX_FRAME_SIZE).peekable();
+         // Always send at least one frame, even for an empty payload. An empty
+@@ -120,13 +148,14 @@ impl<R: ReadWrite> Http2Client<R> {
+             let frame = frame::DataFrame {
+                 stream_id,
+                 payload: Vec::new(),
++                end_stream,
+             }
+             .serialize();
+             self.inner.write_all(&frame).await?;
+             self.inner.flush().await?;
+             return Ok(());
+         }
+-        for chunk in chunks {
++        while let Some(chunk) = chunks.next() {
+             let need = chunk.len() as i64;
+             // Respect the peer's flow-control window: a DATA frame must not exceed
+             // either the connection-level or the stream-level send window, or the
+@@ -140,6 +169,8 @@ impl<R: ReadWrite> Http2Client<R> {
+             let frame = frame::DataFrame {
+                 stream_id,
+                 payload: chunk.to_vec(),
++                // Only the last chunk carries END_STREAM.
++                end_stream: end_stream && chunks.peek().is_none(),
+             }
+             .serialize();
+             self.inner.write_all(&frame).await?;
+@@ -162,6 +193,22 @@ impl<R: ReadWrite> Http2Client<R> {
+             .or_insert(self.peer_initial_window)
+     }
+ 
++    /// Reads the next buffered payload from whichever of `stream_ids` produces
++    /// one first, returning it with the stream it came from.
++    pub async fn read_any(&mut self, stream_ids: &[u32]) -> Result<(u32, Vec<u8>), IdeviceError> {
++        for id in stream_ids {
++            self.cache.entry(*id).or_default();
++        }
++        loop {
++            for id in stream_ids {
++                if let Some(d) = self.cache.get_mut(id).and_then(|c| c.pop_front()) {
++                    return Ok((*id, d));
++                }
++            }
++            self.pump().await?;
++        }
++    }
++
+     pub async fn read(&mut self, stream_id: u32) -> Result<Vec<u8>, IdeviceError> {
+         self.cache.entry(stream_id).or_default();
+         loop {
+@@ -212,6 +259,16 @@ impl<R: ReadWrite> Http2Client<R> {
+                         .or_insert(initial) += w.increment_size as i64;
+                 }
+             }
++            frame::Frame::RstStream(rst) => {
++                if self.finished_file_transfer_streams.remove(&rst.stream_id) {
++                    debug!(
++                        "Device reset finished file transfer stream {}",
++                        rst.stream_id
++                    );
++                } else {
++                    return Err(crate::xpc::errors::XpcError::HttpStreamReset.into());
++                }
++            }
+             frame::Frame::Data(data_frame) => {
+                 debug!(
+                     "Got data frame for {} with {} bytes",
+diff --git a/idevice/src/xpc/mod.rs b/idevice/src/xpc/mod.rs
+index 3c490204bd6a3f7f88d496e963b33b17fb42bc2b..bd0c33f0036055699969cb016b9503eeba6dfa4f 100644
+--- a/idevice/src/xpc/mod.rs
++++ b/idevice/src/xpc/mod.rs
+@@ -17,6 +17,9 @@ pub use format::{Dictionary, XPCMessage, XPCObject};
+ 
+ const ROOT_CHANNEL: u32 = 1;
+ const REPLY_CHANNEL: u32 = 3;
++/// First stream ID available for an outbound file transfer. Client-initiated
++/// streams must be odd, and 1/3 are taken by the root and reply channels.
++const FIRST_OUTBOUND_FILE_STREAM: u32 = 5;
+ 
+ /// Fixed XPC message-wrapper header: magic + flags + body length + message id.
+ const XPC_WRAPPER_LEN: usize = 24;
+@@ -28,8 +31,10 @@ pub struct RemoteXpcClient<R: ReadWrite> {
+     // reply_id: u64 // maybe not used?
+     /// Per-channel bytes accumulated toward the next whole XPC message. Persisted
+     /// across `recv_from_channel` calls so a partially-received message survives a
+-    /// cancelled read — required for `recv_push` to be safe in a `select!`.
++    /// cancelled read.
+     partial: std::collections::HashMap<u32, Vec<u8>>,
++    /// Stream ID for the next outbound file transfer.
++    next_outbound_file_stream: u32,
+ }
+ 
+ impl<R: ReadWrite> RemoteXpcClient<R> {
+@@ -38,6 +43,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
+             h2_client: http2::Http2Client::new(socket).await?,
+             root_id: 1,
+             partial: std::collections::HashMap::new(),
++            next_outbound_file_stream: FIRST_OUTBOUND_FILE_STREAM,
+         })
+     }
+ 
+@@ -107,31 +113,48 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
+         self.recv_from_channel(ROOT_CHANNEL).await
+     }
+ 
++    pub async fn recv_any(&mut self) -> Result<plist::Value, IdeviceError> {
++        const CHANNELS: [u32; 2] = [ROOT_CHANNEL, REPLY_CHANNEL];
++        loop {
++            for channel in CHANNELS {
++                if let Some(msg) = self.take_buffered(channel)?
++                    && let Some(inner) = msg.message
++                    && !inner.as_dictionary().is_some_and(|d| d.is_empty())
++                {
++                    return Ok(inner.to_plist());
++                }
++            }
++            let (channel, chunk) = self.h2_client.read_any(&CHANNELS).await?;
++            self.partial.entry(channel).or_default().extend(chunk);
++        }
++    }
++
++    /// Decodes one whole message out of `channel`'s buffered bytes, if there is
++    /// one, consuming exactly the bytes it occupies so the next message in the
++    /// buffer survives. Returns `None` when the buffer doesn't hold a whole
++    /// message yet.
++    fn take_buffered(&mut self, channel: u32) -> Result<Option<XPCMessage>, IdeviceError> {
++        let buf = self.partial.entry(channel).or_default();
++        match XPCMessage::decode(buf) {
++            Ok(msg) => {
++                let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
++                buf.drain(..consumed);
++                Ok(Some(msg))
++            }
++            // Not enough bytes yet.
++            Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
++            | Err(IdeviceError::NotEnoughBytes(..)) => Ok(None),
++            Err(e) => Err(e),
++        }
++    }
++
+     async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
+         loop {
+             // Try to decode a whole message from what's already buffered before
+             // reading more, so a message split across earlier reads completes.
+-            // Scope the buffer borrow so it's released before the await below.
+-            let decoded = {
+-                let buf = self.partial.entry(channel).or_default();
+-                match XPCMessage::decode(buf) {
+-                    Ok(msg) => {
+-                        // A complete wrapper consumes 24 + body_len bytes; drain
+-                        // exactly that, preserving any bytes of the next message.
+-                        let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
+-                        buf.drain(..consumed);
+-                        Some(msg)
+-                    }
+-                    // Not enough bytes yet: fall through to read another frame.
+-                    Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
+-                    | Err(IdeviceError::NotEnoughBytes(..)) => None,
+-                    Err(e) => return Err(e),
+-                }
+-            };
+-
+-            match decoded {
++            match self.take_buffered(channel)? {
++                // Skip empty-dictionary keepalives and bodyless frames.
+                 Some(msg) => match msg.message {
+-                    // Skip empty-dictionary keepalives and bodyless frames.
+                     Some(inner) => {
+                         if let Some(d) = inner.as_dictionary()
+                             && d.is_empty()
+@@ -238,6 +261,35 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
+         }
+     }
+ 
++    /// Pushes the payload of a file transfer we announced in an earlier request.
++    pub async fn send_file_transfer(
++        &mut self,
++        transfer_id: u64,
++        data: &[u8],
++    ) -> Result<(), IdeviceError> {
++        let stream_id = self.next_outbound_file_stream;
++        self.next_outbound_file_stream += 2;
++
++        self.h2_client.open_stream(stream_id).await?;
++
++        // The preamble is a DATA frame like any other, so it has to go through
++        // the flow-controlled send path: sending it unaccounted overruns the
++        // connection window once an earlier transfer has drained it, and the
++        // device answers with GOAWAY (FLOW_CONTROL_ERROR).
++        let preamble = XPCMessage::new(
++            Some(XPCFlag::FileTxStreamRequest | XPCFlag::AlwaysSet),
++            None,
++            Some(transfer_id),
++        )
++        .encode(transfer_id)?;
++        self.h2_client.send(preamble, stream_id).await?;
++        self.h2_client.send(data.to_vec(), stream_id).await?;
++        self.h2_client
++            .send_end_stream(Vec::new(), stream_id)
++            .await?;
++        Ok(())
++    }
++
+     pub async fn open_file_stream_for_response(
+         &mut self,
+         stream_id: u32,
 diff --git a/tools/src/hid.rs b/tools/src/hid.rs
 index 8393a1d89e7366effabddb7bb00f6411454ebf7c..5a3d90d6acd7c695c315c3aa4b31999a874a6620 100644
 --- a/tools/src/hid.rs

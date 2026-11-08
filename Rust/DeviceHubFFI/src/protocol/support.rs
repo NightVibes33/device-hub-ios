@@ -1,4 +1,5 @@
 use super::*;
+use idevice::services::cryptexd::{self, CryptexdClient};
 pub(super) async fn verify_developer_readiness(
     provider: &mut impl RsdProvider,
     handshake: &mut RsdHandshake,
@@ -49,13 +50,43 @@ pub(super) async fn verify_developer_readiness(
     .await
     {
         Ok(Ok(true)) => Ok(DeveloperReady),
-        Ok(Ok(false)) | Ok(Err(IdeviceError::NotFound)) => Err(developer_image_unavailable()),
+        Ok(Ok(false)) | Ok(Err(IdeviceError::NotFound)) => {
+            // iOS 26.4 and later install the developer image as a cryptex
+            // through cryptexd (what StikDebug and current Xcode do), which the
+            // image mounter's personalized-image lookup does not report.
+            if cryptex_developer_image_installed(provider, handshake).await {
+                Ok(DeveloperReady)
+            } else {
+                Err(developer_image_unavailable())
+            }
+        }
         Ok(Err(error)) => Err(classify_developer_readiness_error(
             DeveloperReadinessProbe::PersonalizedImageLookup,
             error,
         )),
         Err(_) => Err(developer_image_connection_failed()),
     }
+}
+
+/// Reports whether the target has the DeveloperDiskImage cryptex installed.
+/// Any failure (service absent, timeout, protocol error) reads as "not
+/// installed", so the caller keeps its existing unavailable diagnosis.
+async fn cryptex_developer_image_installed(
+    provider: &mut impl RsdProvider,
+    handshake: &mut RsdHandshake,
+) -> bool {
+    let service_name = CryptexdClient::<Box<dyn idevice::ReadWrite>>::rsd_service_name();
+    if !handshake.services.contains_key(service_name.as_ref()) {
+        return false;
+    }
+    matches!(
+        tokio::time::timeout(
+            DEVELOPER_READINESS_TIMEOUT,
+            cryptexd::installed_ddi(provider, handshake),
+        )
+        .await,
+        Ok(Ok(Some(_)))
+    )
 }
 
 pub(super) async fn open_screenshot_service(
@@ -142,7 +173,7 @@ const fn developer_image_unavailable() -> PublicFailure {
         "developer_image_unavailable",
         "developer_readiness",
         false,
-        "The target does not have an Xcode-prepared personalized developer image.",
+        "The target has no mounted personalized developer image or installed DDI cryptex.",
     )
 }
 

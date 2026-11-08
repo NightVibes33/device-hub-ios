@@ -282,7 +282,7 @@ pub enum DhConnectionPhase {
     CapturingScreenshot = 8,
     /// The requested operation completed.
     Ready = 9,
-    /// Proving developer mode and the Xcode-prepared personalized image.
+    /// Proving developer mode and a mounted developer image (personalized or DDI cryptex).
     PreparingDevice = 10,
     /// Opening displayservice and starting audio/video media negotiation.
     StartingDisplayStream = 11,
