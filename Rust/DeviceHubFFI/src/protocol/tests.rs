@@ -1148,3 +1148,24 @@ async fn live_ios_rsd_property_contract() {
     assert!(string_property("UniqueDeviceID").is_some());
     assert!(string_property("ProductType").is_some());
 }
+
+#[test]
+fn self_pairing_connections_are_recognized() {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    let lan = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20));
+    let other = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 21));
+    let mapped = IpAddr::V6(Ipv4Addr::new(192, 168, 1, 20).to_ipv6_mapped());
+    let link_local: IpAddr = "fe80::1c2b:3a4d:5e6f:7081".parse().unwrap();
+
+    assert!(super::is_same_host(lan, lan));
+    assert!(super::is_same_host(mapped, lan));
+    assert!(super::is_same_host(lan, mapped));
+    assert!(super::is_same_host(link_local, link_local));
+    assert!(super::is_same_host(lan, IpAddr::V6(Ipv6Addr::LOCALHOST)));
+    assert!(!super::is_same_host(lan, other));
+    assert!(!super::is_same_host(
+        link_local,
+        "fe80::99".parse().unwrap()
+    ));
+}

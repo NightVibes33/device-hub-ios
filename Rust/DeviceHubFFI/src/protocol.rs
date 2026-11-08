@@ -157,7 +157,7 @@ async fn run_pairing(
         DhSessionState::Running,
     )?;
 
-    let (stream, _) = listener.accept().await.map_err(|_| {
+    let (stream, peer) = listener.accept().await.map_err(|_| {
         PublicFailure::new(
             "pairing_listener_accept_failed",
             "pairing_listener",
@@ -165,6 +165,19 @@ async fn run_pairing(
             "Unable to accept the device pairing connection.",
         )
     })?;
+    // The pairing advertisement is visible to every device on the network,
+    // including the one running Device Hub. A connection whose source is this
+    // device's own address means it was started from this device's Settings.
+    if let Ok(local) = stream.local_addr()
+        && is_same_host(local.ip(), peer.ip())
+    {
+        return Err(PublicFailure::new(
+            "pair_setup_failed",
+            "pair_setup",
+            false,
+            "The pairing request came from this device; pair from the device to control.",
+        ));
+    }
     emitter.phase(DhConnectionPhase::Pairing, DhSessionState::Running)?;
 
     let mut pairing_file = operation.controller.pairing_file(None);
@@ -509,6 +522,19 @@ fn build_userspace_video_offer(
         return Err(media_start_failure());
     }
     build_screen_video_offer(call_id, call_info, our_ssrc).map_err(|_| media_start_failure())
+}
+
+/// True when both ends of a connection are the same machine, treating an
+/// IPv4-mapped IPv6 address as its IPv4 form.
+fn is_same_host(local: IpAddr, peer: IpAddr) -> bool {
+    fn canonical(address: IpAddr) -> IpAddr {
+        match address {
+            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(address, IpAddr::V4),
+            IpAddr::V4(_) => address,
+        }
+    }
+    let peer = canonical(peer);
+    peer.is_loopback() || canonical(local) == peer
 }
 
 /// Opens RSD through the tunnel and performs the service-discovery handshake.
